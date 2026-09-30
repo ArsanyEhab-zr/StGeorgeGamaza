@@ -1,0 +1,10 @@
+{
+  "short_name": "كنيسة مارجرجس",
+  "name": "كنيسة مارجرجس غمازة الكبري",
+  "description": "تطبيق إدارة الحضور والغياب لخدمة مدارس الأحد",
+  "start_url": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "theme_color": "#ffffff",
+  "background_color": "#ffffff"
+}

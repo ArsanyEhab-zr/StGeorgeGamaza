@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-church-blue: #0A192F;
+  --color-church-blue-light: #112240;
+  --color-church-gold: #D4AF37;
+  --color-church-gold-light: #F3E5AB;
+}
+
+body {
+  font-family: 'Cairo', system-ui, -apple-system, sans-serif;
+  background-color: #f8fafc;
+}@media print {
+  .no-print { display: none !important; }
+  body, main { background: white !important; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+  .print-only { display: block !important; }
+}
