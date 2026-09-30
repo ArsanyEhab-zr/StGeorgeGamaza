@@ -9,13 +9,15 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['image/osra.png', 'image/khedma.png'],
+      injectRegister: 'auto',
+      includeAssets: ['image/osra.png', 'image/khedma.png', 'favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'كنيسة مارجرجس غمازة الكبرى',
-        short_name: 'مارجرجس',
+        name: 'كنيسة الشهيد العظيم مارجرجس غمازة الكبرى',
+        short_name: 'خدمتي',
+        start_url: '/',
         description: 'تطبيق إدارة الحضور والغياب لخدمة مدارس الأحد',
-        theme_color: '#020617',
-        background_color: '#020617',
+        theme_color: '#0f172a',
+        background_color: '#0f172a',
         display: 'standalone',
         dir: 'rtl',
         icons: [
