@@ -22,8 +22,7 @@ export default function Login() {
 
     const [appSettings, setAppSettings] = useState({ khedmaName: "نظام إدارة الخدمة", khedmaLogo: "" });
 
-    // 🌟 لينك احتياطي لحد ما يسحب الجديد من الفايربيز
-    const [apkLink, setApkLink] = useState(TENANT_CONFIG.APK_DOWNLOAD_LINK);
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
 
     useEffect(() => {
         const currentKey = localStorage.getItem('currentSyncKey');
@@ -43,22 +42,35 @@ export default function Login() {
             }
         }
 
-        // 🌟 بيسحب اللينك الجديد من الفايربيز لو الخادم فاتح من الويب
-        if (Capacitor.getPlatform() === 'web') {
-            const fetchLatestApkLink = async () => {
-                try {
-                    const docRef = doc(firestore, "System", "AppConfig");
-                    const docSnap = await getDoc(docRef);
-                    if (docSnap.exists() && docSnap.data().updateLink) {
-                        setApkLink(docSnap.data().updateLink);
-                    }
-                } catch (err) {
-                    console.log("خطأ في جلب اللينك الذكي:", err);
-                }
-            };
-            fetchLatestApkLink();
-        }
+        // 🌟 إعدادات التثبيت PWA
+        const handleBeforeInstallPrompt = (e) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+        };
+        const handleAppInstalled = () => {
+            setDeferredPrompt(null);
+        };
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.addEventListener('appinstalled', handleAppInstalled);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+            window.removeEventListener('appinstalled', handleAppInstalled);
+        };
     }, [navigate]);
+
+    const handleInstallClick = async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                setDeferredPrompt(null);
+            }
+        } else {
+            alert("لتثبيت التطبيق على أجهزة آيفون، اضغط على زر المشاركة (Share) ثم اختر 'Add to Home Screen'.");
+        }
+    };
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -216,15 +228,14 @@ export default function Login() {
                                     <div className="flex-1 h-px bg-slate-200/20"></div>
                                 </div>
 
-                                <a
-                                    href={apkLink}
-                                    target="_blank"
-                                    rel="noreferrer"
+                                <button
+                                    type="button"
+                                    onClick={handleInstallClick}
                                     className="flex items-center justify-center gap-2 w-full py-4 rounded-2xl bg-linear-to-r from-emerald-500 to-green-600 text-white font-black hover:from-emerald-600 hover:to-green-700 transition-all shadow-lg active:scale-95"
                                 >
                                     <Download size={22} />
-                                    تحميل تطبيق الأندرويد
-                                </a>
+                                    تثبيت التطبيق على الهاتف
+                                </button>
                             </>
                         )}
                     </form>
