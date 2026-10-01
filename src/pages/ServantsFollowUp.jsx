@@ -11,8 +11,9 @@ export default function ServantsFollowUp() {
     const [isSaving, setIsSaving] = useState(false);
 
     const getOsraName = (key) => {
-        if (!key || key === 'الكل') return key;
-        const osra = TENANT_CONFIG.osras.find(o => o.syncKey === key);
+        if (!key || key === 'الكل') return key || "غير محدد";
+        const osras = TENANT_CONFIG?.osras || [];
+        const osra = osras.find(o => String(o.syncKey) === String(key));
         return osra ? osra.name : key;
     };
 
