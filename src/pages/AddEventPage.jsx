@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Plus, Trash2, ArrowRight, MapPin } from 'lucide-react';
+import { Check, Plus, Trash2, ArrowRight, MapPin, Globe } from 'lucide-react';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
 
@@ -15,6 +15,9 @@ export default function AddEventPage() {
 
     const currentSyncKey = localStorage.getItem('currentSyncKey');
     const servantData = JSON.parse(localStorage.getItem('currentServant') || '{}');
+    
+    const isLeader = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || ['أدمن مساعد', 'كاهن', 'أمين خدمة'].includes(servantData.role);
+    const [isGlobal, setIsGlobal] = useState(false);
 
     const addManualTask = () => {
         if (!manualTask.trim()) return;
@@ -38,7 +41,9 @@ export default function AddEventPage() {
         const now = new Date().toISOString();
         const newEvent = {
             id: `ev_${Date.now()}`,
-            syncKey: currentSyncKey,
+            syncKey: (isLeader && isGlobal) ? 'global' : currentSyncKey,
+            isGlobal: isLeader ? isGlobal : false,
+            createdAt: Date.now(),
             title,
             date,
             price: price || 'مجانًا', // 🌟 حفظ السعر
@@ -95,6 +100,23 @@ export default function AddEventPage() {
                             value={price} onChange={e => setPrice(e.target.value)}
                         />
                     </div>
+                    
+                    {/* 🌟 حدث عام (للقادة فقط) */}
+                    {isLeader && (
+                        <div className="flex items-center gap-3 bg-indigo-50 p-4 rounded-2xl border border-indigo-100 mt-2">
+                            <input 
+                                type="checkbox" 
+                                id="globalEvent" 
+                                checked={isGlobal} 
+                                onChange={(e) => setIsGlobal(e.target.checked)}
+                                className="w-6 h-6 accent-indigo-600 rounded cursor-pointer"
+                            />
+                            <label htmlFor="globalEvent" className="text-indigo-900 font-black text-sm cursor-pointer flex items-center gap-2">
+                                <Globe size={18} className="text-indigo-500" />
+                                حدث عام (يظهر لجميع الأسر والخدام)
+                            </label>
+                        </div>
+                    )}
                 </div>
 
                 {/* 2. قسم المساعد الصوتي تم إزالته */}

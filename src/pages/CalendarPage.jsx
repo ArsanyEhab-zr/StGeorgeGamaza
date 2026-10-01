@@ -2,7 +2,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar as CalendarIcon, Plus, ChevronRight, ChevronLeft, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Calendar as CalendarIcon, Plus, ChevronRight, ChevronLeft, MapPin, CheckCircle2, ArrowRight, Globe } from 'lucide-react';
 import { db } from '../db/database';
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -21,11 +21,12 @@ export default function CalendarPage() {
     // 1️⃣ جلب الأحداث من الداتابيز المحلية
     const fetchEvents = async () => {
         if (!currentSyncKey) return;
-        const allEvents = await db.events.where('syncKey').equals(currentSyncKey).toArray();
-        setEvents(allEvents.filter(e => !e.isDeleted));
+        const allEvents = await db.events.toArray();
+        setEvents(allEvents.filter(e => !e.isDeleted && (e.syncKey === currentSyncKey || e.isGlobal || e.syncKey === 'global')));
     };
 
     useEffect(() => {
+        localStorage.setItem('lastViewedCalendar', Date.now().toString());
         fetchEvents();
     }, [currentSyncKey]);
 
@@ -134,7 +135,8 @@ export default function CalendarPage() {
 
                     <div className="grid grid-cols-7 gap-2">
                         {daysInMonth.map(day => {
-                            const hasEvent = events.some(e => isSameDay(new Date(e.date), day));
+                            const hasEvent = events.some(e => isSameDay(new Date(e.date), day) && !e.isGlobal && e.syncKey !== 'global');
+                            const hasGlobalEvent = events.some(e => isSameDay(new Date(e.date), day) && (e.isGlobal || e.syncKey === 'global'));
                             const isSelected = isSameDay(day, selectedDate);
                             const isCurrentDay = isToday(day);
                             const holidayName = getHolidayInfo(day);
@@ -153,8 +155,9 @@ export default function CalendarPage() {
                                 >
                                     {format(day, 'd')}
                                     <div className="flex gap-1 mt-1">
+                                        {hasGlobalEvent && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-amber-200' : 'bg-amber-400'}`}></span>}
                                         {hasEvent && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-white' : 'bg-indigo-400'}`}></span>}
-                                        {holidayName && !hasEvent && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-rose-200' : 'bg-rose-500'}`}></span>}
+                                        {holidayName && !hasEvent && !hasGlobalEvent && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-rose-200' : 'bg-rose-500'}`}></span>}
                                     </div>
                                 </button>
                             );
@@ -196,7 +199,8 @@ export default function CalendarPage() {
                                         className="bg-slate-800 border border-slate-700 rounded-2xl p-4 cursor-pointer hover:border-indigo-500/50 transition-all flex items-center justify-between shadow-md"
                                     >
                                         <div>
-                                            <h4 className="font-bold text-white mb-2 flex items-center gap-2">
+                                            <h4 className="font-bold text-white mb-2 flex items-center gap-2 flex-wrap">
+                                                {(event.isGlobal || event.syncKey === 'global') && <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap flex items-center gap-1"><Globe size={10} /> حدث عام</span>}
                                                 {event.title}
                                                 {/* 🌟 نقطة صفرا صغيرة بتدل إن الحدث ده لسه مترفعش للسحابة */}
                                                 {!event.isSynced && <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="يحتاج لمزامنة"></span>}

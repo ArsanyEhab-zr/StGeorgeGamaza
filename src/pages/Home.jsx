@@ -50,6 +50,12 @@ export default function Home() {
         return db.children.where('syncKey').equals(currentSyncKey).toArray();
     }, [currentSyncKey, isMaster]);
 
+    // 🌟 عدد الأحداث العامة الغير مقروءة
+    const unseenGlobalEventsCount = useLiveQuery(() => {
+        const lastViewed = parseInt(localStorage.getItem('lastViewedCalendar') || '0', 10);
+        return db.events.filter(e => e.isGlobal === true && (e.createdAt || 0) > lastViewed).count();
+    }, []);
+
     useEffect(() => {
         // 🌟 1. تظبيط التواريخ
         const date = new Date();
@@ -331,9 +337,12 @@ export default function Home() {
                                 {/* 🌟 زرار الكلندر موجود للكل يقدر يدوس عليه */}
                                 <div
                                     onClick={() => navigate('/calendar')}
-                                    className="flex flex-col gap-1 mt-3 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all group select-none"
+                                    className="flex flex-col gap-1 mt-3 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all group select-none relative"
                                     title="افتح أجندة الخدمة والمهام"
                                 >
+                                    {unseenGlobalEventsCount > 0 && (
+                                        <span className="absolute -top-1 -right-2 w-3 h-3 bg-red-500 border-2 border-white rounded-full animate-pulse z-10"></span>
+                                    )}
                                     <div className="inline-flex items-center gap-1.5 text-[11px] md:text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg w-fit group-hover:bg-blue-50 group-hover:text-blue-700 border border-transparent group-hover:border-blue-200 transition-colors shadow-sm">
                                         <CalendarDays size={14} className="text-blue-500 group-hover:scale-110 transition-transform" /> {gregorianDate}
                                     </div>
