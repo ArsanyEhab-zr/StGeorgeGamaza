@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../db/database';
 // 🌟 ضفنا أيقونة Plus عشان زرار إضافة المهمة الجديدة
-import { ArrowRight, Check, Square, Calendar, CalendarDays, Plus, Edit, Trash2, X, PlusCircle, Link, MapPin, SearchCheck, MessageCircleWarning, ShieldAlert, BadgeCent } from 'lucide-react';
+import { ArrowRight, Check, Square, Calendar, CalendarDays, Plus, Edit, Trash2, X, PlusCircle, Link, MapPin, SearchCheck, MessageCircleWarning, ShieldAlert, BadgeCent, User, CheckCircle2, Circle, MessageSquare, Save, Globe } from 'lucide-react';
 import useAutoSync from '../hooks/useAutoSync';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
@@ -124,15 +124,17 @@ export default function EventDetailsPage() {
 
     if (!event) return <div className="min-h-screen bg-slate-900 text-white flex justify-center items-center">جاري التحميل...</div>;
 
-    const completedCount = event.tasks.filter(t => t.isCompleted).length;
-    const progress = event.tasks.length === 0 ? 0 : (completedCount / event.tasks.length) * 100;
+    const eventTasks = event?.tasks || [];
+    const completedCount = eventTasks.filter(t => t.isCompleted).length;
+    const progress = eventTasks.length === 0 ? 0 : (completedCount / eventTasks.length) * 100;
+    const isGlobalEvent = event?.isGlobal || event?.syncKey === 'global';
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans pb-24" dir="rtl">
             <div className="bg-slate-800/50 border-b border-white/10 px-4 py-4 flex items-center justify-between sticky top-0 z-50 backdrop-blur-md">
                 <div className="flex items-center gap-4">
                     <button onClick={() => navigate(-1)} className="p-2 bg-slate-700 hover:bg-slate-600 rounded-full"><ArrowRight size={20} /></button>
-                    <h1 className="text-xl font-black truncate max-w-50">{event.title}</h1>
+                    <h1 className="text-xl font-black truncate max-w-50">{event?.title || 'حدث'}</h1>
                 </div>
 
                 {!isEditing ? (
@@ -149,17 +151,22 @@ export default function EventDetailsPage() {
                 <div className="bg-linear-to-br from-indigo-900/50 to-purple-900/50 border border-indigo-500/30 rounded-3xl p-5 shadow-xl transition-all">
                     {!isEditing ? (
                         <>
-                            <h2 className="text-2xl font-black text-white mb-4">{event.title}</h2>
+                            {isGlobalEvent && (
+                                <div className="mb-3 inline-flex items-center gap-2 bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-black px-3 py-1.5 rounded-full">
+                                    <Globe size={14} /> حدث عام
+                                </div>
+                            )}
+                            <h2 className="text-2xl font-black text-white mb-4">{event?.title || ''}</h2>
                             <div className="space-y-3 text-sm font-bold text-indigo-200">
-                                <p className="flex items-center gap-2"><CalendarDays size={16} className="text-indigo-400" /> {format(new Date(event.date), 'EEEE، d MMMM yyyy', { locale: ar })}</p>
-                                <p className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 p-2 rounded-xl w-fit"><span className="text-lg leading-none">💰</span> السعر: {event.price || 'مجانًا'}</p>
-                                <p className="flex items-center gap-2 opacity-70"><User size={16} className="text-indigo-400" /> أُضيف بواسطة: {event.createdBy}</p>
+                                <p className="flex items-center gap-2"><CalendarDays size={16} className="text-indigo-400" /> {event?.date ? format(new Date(event.date), 'EEEE، d MMMM yyyy', { locale: ar }) : 'بدون تاريخ'}</p>
+                                <p className="flex items-center gap-2 bg-emerald-500/10 text-emerald-400 p-2 rounded-xl w-fit"><span className="text-lg leading-none">💰</span> السعر: {event?.price || 'مجانًا'}</p>
+                                <p className="flex items-center gap-2 opacity-70"><User size={16} className="text-indigo-400" /> أُضيف بواسطة: {event?.createdBy || 'غير معروف'}</p>
                             </div>
 
                             <div className="mt-6">
                                 <div className="flex justify-between text-xs font-bold text-indigo-300 mb-2">
                                     <span>نسبة الإنجاز</span>
-                                    <span>{completedCount} من {event.tasks.length} مهام</span>
+                                    <span>{completedCount} من {eventTasks.length} مهام</span>
                                 </div>
                                 <div className="w-full bg-slate-950/50 rounded-full h-2.5 overflow-hidden">
                                     <div className="bg-emerald-500 h-2.5 rounded-full transition-all duration-500" style={{ width: `${progress}%` }}></div>
@@ -193,7 +200,7 @@ export default function EventDetailsPage() {
                     {/* لو مش بيعدل: نعرض المهام العادية اللي بتتعلم صح */}
                     {!isEditing ? (
                         <div className="space-y-3">
-                            {event.tasks.map(task => (
+                            {eventTasks.map(task => (
                                 <div
                                     key={task.id}
                                     onClick={() => toggleTask(task.id)}
@@ -212,14 +219,14 @@ export default function EventDetailsPage() {
 
                                         {task.isCompleted && (
                                             <div className="mt-2 text-xs text-emerald-300 bg-emerald-950/50 p-2 rounded-lg border border-emerald-800/50">
-                                                <p className="font-bold flex items-center gap-1 mb-1"><User size={10} /> أتمها: {task.completedByName}</p>
+                                                <p className="font-bold flex items-center gap-1 mb-1"><User size={10} /> أتمها: {task.completedByName || 'خادم'}</p>
                                                 {task.note && <p className="flex items-start gap-1 opacity-90"><MessageSquare size={10} className="mt-0.5 shrink-0" /> {task.note}</p>}
                                             </div>
                                         )}
                                     </div>
                                 </div>
                             ))}
-                            {event.tasks.length === 0 && (
+                            {eventTasks.length === 0 && (
                                 <p className="text-center text-slate-500 text-sm font-bold py-4">لا توجد مهام حالياً.</p>
                             )}
                         </div>
