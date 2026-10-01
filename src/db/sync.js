@@ -18,9 +18,10 @@ const cleanData = (obj) => {
 
 // 🛠️ دالة مساعدة لتنسيق اللستة في التقرير عشان متكونش طويلة جداً ومزعجة
 const formatDetailedList = (list) => {
-    if (list.length === 0) return "لا يوجد";
-    if (list.length <= 4) return list.join('، ');
-    return `${list.slice(0, 4).join('، ')} ... (+${list.length - 4} آخرين)`;
+    const safeList = list || [];
+    if (safeList.length === 0) return "لا يوجد";
+    if (safeList.length <= 4) return safeList.join('، ');
+    return `${safeList.slice(0, 4).join('، ')} ... (+${safeList.length - 4} آخرين)`;
 };
 
 const _syncDataWithCloud = async () => {
@@ -87,23 +88,23 @@ const _syncDataWithCloud = async () => {
 
         if (isAdmin) {
             const childrenSnapshot = await getDocs(collectionGroup(firestore, 'children'));
-            cloudChildren = childrenSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudChildren = (childrenSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const attendanceSnapshot = await getDocs(collectionGroup(firestore, 'attendance'));
-            cloudAttendance = attendanceSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudAttendance = (attendanceSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
-            cloudEvents = eventsSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
             
         } else {
             const childrenSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'children'));
-            cloudChildren = childrenSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudChildren = (childrenSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const attendanceSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'attendance'));
-            cloudAttendance = attendanceSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudAttendance = (attendanceSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const eventsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'events'));
-            cloudEvents = eventsSnapshot.docs.map(processCloudDoc).filter(Boolean);
+            cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
             
         }
 
@@ -113,12 +114,12 @@ const _syncDataWithCloud = async () => {
         const cloudEventsMap = new Map(cloudEvents.map(e => [e.id, e]));
 
         // 4. هنجيب الداتا من الموبايل (أوفلاين)
-        const localChildren = await db.children.toArray();
-        const localAttendance = await db.attendance.toArray();
-        const localEvents = await db.events.toArray();
+        const localChildren = (await db.children.toArray()) || [];
+        const localAttendance = (await db.attendance.toArray()) || [];
+        const localEvents = (await db.events.toArray()) || [];
 
         // 🚀🚀 5. الرفع للسحابة (Push) "بنظام isDirty" — نرفع الـ dirty بس 🚀🚀
-        for (const child of localChildren) {
+        try { for (const child of localChildren) {
             if (!child.isDirty) continue; // ✨ Skip clean records
             
             const targetKey = isAdmin ? child.syncKey : currentSyncKey;
@@ -140,9 +141,9 @@ const _syncDataWithCloud = async () => {
             await db.children.update(child.id, { isDirty: false, updatedAt: now });
             pushLog.children.push(child.name.split(' ')[0]); 
             pushedChildrenIds.add(child.id);
-        }
+        } } catch(e) { console.error('Error syncing children push:', e); }
 
-        for (const record of localAttendance) {
+        try { for (const record of localAttendance) {
             if (!record.isDirty) continue; // ✨ Skip clean records
 
             const targetKey = isAdmin ? record.syncKey : currentSyncKey;
@@ -165,9 +166,9 @@ const _syncDataWithCloud = async () => {
             await db.attendance.update(record.id, { isDirty: false, updatedAt: now });
             pushLog.attendance.push(record.date); 
             pushedAttendanceIds.add(docId);
-        }
+        } } catch(e) { console.error('Error syncing attendance push:', e); }
 
-        for (const event of localEvents) {
+        try { for (const event of localEvents) {
             if (!event.isDirty) continue; // ✨ Skip clean records
 
             const targetKey = isAdmin ? event.syncKey : currentSyncKey;
@@ -189,12 +190,12 @@ const _syncDataWithCloud = async () => {
             await db.events.update(event.id, { isDirty: false, updatedAt: now });
             pushLog.events.push(event.title);
             pushedEventsIds.add(event.id);
-        }
+        } } catch(e) { console.error('Error syncing events push:', e); }
 
 
         // 📝 5b. رفع الامتحانات (Exams metadata push) — isDirty فقط
-        const localExams = await db.exams.toArray();
-        for (const exam of localExams) {
+        const localExams = (await db.exams.toArray()) || [];
+        try { for (const exam of localExams) {
             if (!exam.isDirty) continue;
 
             const targetKey = isAdmin ? (exam.syncKey || currentSyncKey) : currentSyncKey;
@@ -223,11 +224,11 @@ const _syncDataWithCloud = async () => {
             await db.exams.update(exam.id, { isDirty: false, updatedAt: now, firebaseId: examFirebaseId });
             pushLog.exams.push(exam.examName);
             pushedExamIds.add(examFirebaseId);
-        }
+        } } catch(e) { console.error('Error syncing exams push:', e); }
 
         // 🎓 5c. رفع الدرجات (Grades push) — isDirty فقط
-        const localGrades = await db.grades.toArray();
-        for (const grade of localGrades) {
+        const localGrades = (await db.grades.toArray()) || [];
+        try { for (const grade of localGrades) {
             if (!grade.isDirty) continue;
 
             const targetKey = isAdmin ? (grade.syncKey || currentSyncKey) : currentSyncKey;
@@ -262,12 +263,12 @@ const _syncDataWithCloud = async () => {
             await db.grades.update(grade.id, { isDirty: false, updatedAt: now });
             pushLog.grades.push(`${grade.examName}/${grade.childId}`);
             pushedGradeKeys.add(gradeKey);
-        }
+        } } catch(e) { console.error('Error syncing grades push:', e); }
 
         // 🌟🌟 6. تحديث داتا الموبايل (Pull) "بنظام updatedAt delta" 🌟🌟
         const localChildrenMap = new Map(localChildren.map(c => [c.id, c]));
         
-        for (const cloudChild of cloudChildren) {
+        try { for (const cloudChild of cloudChildren) {
             if (pushedChildrenIds.has(cloudChild.id)) continue; // Skip records we just pushed
             
             const localMatch = localChildrenMap.get(cloudChild.id);
@@ -285,10 +286,10 @@ const _syncDataWithCloud = async () => {
                     await db.children.put(childToSave); 
                 }
             }
-        }
+        } } catch(e) { console.error('Error syncing children pull:', e); }
 
         const localEventsMap = new Map(localEvents.map(e => [e.id, e]));
-        for (const cloudEvent of cloudEvents) {
+        try { for (const cloudEvent of cloudEvents) {
             if (pushedEventsIds.has(cloudEvent.id)) continue;
             
             const localMatch = localEventsMap.get(cloudEvent.id);
@@ -305,11 +306,11 @@ const _syncDataWithCloud = async () => {
                     await db.events.put(eventToSave);
                 }
             }
-        }
+        } } catch(e) { console.error('Error syncing events pull:', e); }
 
 
         const localAttendanceMap = new Map(localAttendance.map(a => [`${a.date}_${a.childId}_${a.type}`, a]));
-        for (const cAtt of cloudAttendance) {
+        try { for (const cAtt of cloudAttendance) {
             const docId = `${cAtt.date}_${cAtt.childId}_${cAtt.type}`;
             if (pushedAttendanceIds.has(docId)) continue;
             
@@ -322,24 +323,24 @@ const _syncDataWithCloud = async () => {
                 const kidName = childInfo ? childInfo.name.split(' ')[0] : 'طفل';
                 pullLog.attendanceAdded.push(`${kidName}(${cAtt.date.slice(5)})`);
             }
-        }
+        } } catch(e) { console.error('Error syncing attendance pull:', e); }
 
         // 📝 6b. سحب الامتحانات (Exams metadata pull)
         let cloudExamsList = [];
         if (isAdmin) {
             const examsSnapshot = await getDocs(collectionGroup(firestore, 'exams'));
             // Filter only exam-level docs (those under Osras/{key}/exams, not grades subcollections)
-            cloudExamsList = examsSnapshot.docs
+            cloudExamsList = (examsSnapshot?.docs || [])
                 .filter(d => d.ref.parent.id === 'exams')
                 .map(d => ({ firebaseId: d.id, ...d.data() }))
                 .filter(Boolean);
         } else {
             const examsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'exams'));
-            cloudExamsList = examsSnapshot.docs.map(d => ({ firebaseId: d.id, ...d.data() })).filter(Boolean);
+            cloudExamsList = (examsSnapshot?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() })).filter(Boolean);
         }
 
         const localExamsMap = new Map(localExams.map(e => [e.firebaseId, e]));
-        for (const cloudExam of cloudExamsList) {
+        try { for (const cloudExam of cloudExamsList) {
             if (pushedExamIds.has(cloudExam.firebaseId)) continue;
 
             const localMatch = localExamsMap.get(cloudExam.firebaseId);
@@ -365,16 +366,16 @@ const _syncDataWithCloud = async () => {
                     await db.exams.update(localMatch.id, examToSave);
                 }
             }
-        }
+        } } catch(e) { console.error('Error syncing exams pull:', e); }
 
         // 🎓 6c. سحب الدرجات (Grades pull)
         // Pull grades for each cloud exam
-        for (const cloudExam of cloudExamsList) {
+        try { for (const cloudExam of cloudExamsList) {
             let cloudGradesDocs = [];
             try {
                 const gradesColRef = collection(firestore, 'Osras', isAdmin ? (cloudExam.syncKey || currentSyncKey) : currentSyncKey, 'exams', cloudExam.firebaseId, 'grades');
                 const gradesSnapshot = await getDocs(gradesColRef);
-                cloudGradesDocs = gradesSnapshot.docs;
+                cloudGradesDocs = gradesSnapshot?.docs || [];
             } catch (_e) {
                 continue; // Skip if the subcollection doesn't exist
             }
@@ -417,7 +418,7 @@ const _syncDataWithCloud = async () => {
                     }
                 }
             }
-        }
+        } } catch(e) { console.error('Error syncing grades pull:', e); }
 
         // 🕐 تحديث آخر وقت مزامنة
         localStorage.setItem('lastSyncTime', now);
@@ -429,29 +430,29 @@ const _syncDataWithCloud = async () => {
 
         if (settingsUpdated) finalMessage += "⚙️ تم سحب تحديثات الهيكل المركزي.\n\n";
 
-        let hasPush = pushLog.children.length > 0 || pushLog.attendance.length > 0 || pushLog.events.length > 0 || pushLog.grades.length > 0 || pushLog.exams.length > 0 || pushLog.hymns.length > 0;
+        let hasPush = (pushLog.children?.length || 0) > 0 || (pushLog.attendance?.length || 0) > 0 || (pushLog.events?.length || 0) > 0 || (pushLog.grades?.length || 0) > 0 || (pushLog.exams?.length || 0) > 0;
         if (hasPush) {
             finalMessage += `⬆️ تم الرفع للسحابة:\n`;
-            if (pushLog.children.length > 0) finalMessage += `👦 أطفال (${pushLog.children.length}): ${formatDetailedList(pushLog.children)}\n`;
-            if (pushLog.attendance.length > 0) finalMessage += `📅 غياب (${pushLog.attendance.length}): ${formatDetailedList(pushLog.attendance)}\n`;
-            if (pushLog.events.length > 0) finalMessage += `🏕️ أحداث (${pushLog.events.length}): ${formatDetailedList(pushLog.events)}\n`;
-            if (pushLog.exams.length > 0) finalMessage += `📝 امتحانات (${pushLog.exams.length}): ${formatDetailedList(pushLog.exams)}\n`;
-            if (pushLog.grades.length > 0) finalMessage += `🎓 درجات (${pushLog.grades.length}): ${formatDetailedList(pushLog.grades)}\n`;
+            if ((pushLog.children?.length || 0) > 0) finalMessage += `👦 أطفال (${(pushLog.children?.length || 0)}): ${formatDetailedList(pushLog.children)}\n`;
+            if ((pushLog.attendance?.length || 0) > 0) finalMessage += `📅 غياب (${(pushLog.attendance?.length || 0)}): ${formatDetailedList(pushLog.attendance)}\n`;
+            if ((pushLog.events?.length || 0) > 0) finalMessage += `🏕️ أحداث (${(pushLog.events?.length || 0)}): ${formatDetailedList(pushLog.events)}\n`;
+            if ((pushLog.exams?.length || 0) > 0) finalMessage += `📝 امتحانات (${(pushLog.exams?.length || 0)}): ${formatDetailedList(pushLog.exams)}\n`;
+            if ((pushLog.grades?.length || 0) > 0) finalMessage += `🎓 درجات (${(pushLog.grades?.length || 0)}): ${formatDetailedList(pushLog.grades)}\n`;
             finalMessage += `\n`;
         }
 
-        let hasPull = pullLog.childrenAdded.length > 0 || pullLog.childrenUpdated.length > 0 || pullLog.attendanceAdded.length > 0 || pullLog.eventsAdded.length > 0 || pullLog.eventsUpdated.length > 0 || pullLog.gradesAdded.length > 0 || pullLog.gradesUpdated.length > 0 || pullLog.examsAdded.length > 0 || pullLog.examsUpdated.length > 0 || pullLog.hymnsAdded.length > 0 || pullLog.hymnsUpdated.length > 0;
+        let hasPull = (pullLog.childrenAdded?.length || 0) > 0 || (pullLog.childrenUpdated?.length || 0) > 0 || (pullLog.attendanceAdded?.length || 0) > 0 || (pullLog.eventsAdded?.length || 0) > 0 || (pullLog.eventsUpdated?.length || 0) > 0 || (pullLog.gradesAdded?.length || 0) > 0 || (pullLog.gradesUpdated?.length || 0) > 0 || (pullLog.examsAdded?.length || 0) > 0 || (pullLog.examsUpdated?.length || 0) > 0;
         if (hasPull) {
             finalMessage += `⬇️ تم الاستقبال من السحابة:\n`;
-            if (pullLog.childrenAdded.length > 0) finalMessage += `➕ أطفال جُداد (${pullLog.childrenAdded.length}): ${formatDetailedList(pullLog.childrenAdded)}\n`;
-            if (pullLog.childrenUpdated.length > 0) finalMessage += `🔄 تحديث أطفال (${pullLog.childrenUpdated.length}): ${formatDetailedList(pullLog.childrenUpdated)}\n`;
-            if (pullLog.attendanceAdded.length > 0) finalMessage += `➕ غياب مسجل (${pullLog.attendanceAdded.length}): ${formatDetailedList(pullLog.attendanceAdded)}\n`;
-            if (pullLog.eventsAdded.length > 0) finalMessage += `➕ رحلات جديدة (${pullLog.eventsAdded.length}): ${formatDetailedList(pullLog.eventsAdded)}\n`;
-            if (pullLog.eventsUpdated.length > 0) finalMessage += `🔄 تحديث رحلات (${pullLog.eventsUpdated.length}): ${formatDetailedList(pullLog.eventsUpdated)}\n`;
-            if (pullLog.examsAdded.length > 0) finalMessage += `➕ امتحانات جديدة (${pullLog.examsAdded.length}): ${formatDetailedList(pullLog.examsAdded)}\n`;
-            if (pullLog.examsUpdated.length > 0) finalMessage += `🔄 تحديث امتحانات (${pullLog.examsUpdated.length}): ${formatDetailedList(pullLog.examsUpdated)}\n`;
-            if (pullLog.gradesAdded.length > 0) finalMessage += `➕ درجات جديدة (${pullLog.gradesAdded.length}): ${formatDetailedList(pullLog.gradesAdded)}\n`;
-            if (pullLog.gradesUpdated.length > 0) finalMessage += `🔄 تحديث درجات (${pullLog.gradesUpdated.length}): ${formatDetailedList(pullLog.gradesUpdated)}\n`;
+            if ((pullLog.childrenAdded?.length || 0) > 0) finalMessage += `➕ أطفال جُداد (${(pullLog.childrenAdded?.length || 0)}): ${formatDetailedList(pullLog.childrenAdded)}\n`;
+            if ((pullLog.childrenUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث أطفال (${(pullLog.childrenUpdated?.length || 0)}): ${formatDetailedList(pullLog.childrenUpdated)}\n`;
+            if ((pullLog.attendanceAdded?.length || 0) > 0) finalMessage += `➕ غياب مسجل (${(pullLog.attendanceAdded?.length || 0)}): ${formatDetailedList(pullLog.attendanceAdded)}\n`;
+            if ((pullLog.eventsAdded?.length || 0) > 0) finalMessage += `➕ رحلات جديدة (${(pullLog.eventsAdded?.length || 0)}): ${formatDetailedList(pullLog.eventsAdded)}\n`;
+            if ((pullLog.eventsUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث رحلات (${(pullLog.eventsUpdated?.length || 0)}): ${formatDetailedList(pullLog.eventsUpdated)}\n`;
+            if ((pullLog.examsAdded?.length || 0) > 0) finalMessage += `➕ امتحانات جديدة (${(pullLog.examsAdded?.length || 0)}): ${formatDetailedList(pullLog.examsAdded)}\n`;
+            if ((pullLog.examsUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث امتحانات (${(pullLog.examsUpdated?.length || 0)}): ${formatDetailedList(pullLog.examsUpdated)}\n`;
+            if ((pullLog.gradesAdded?.length || 0) > 0) finalMessage += `➕ درجات جديدة (${(pullLog.gradesAdded?.length || 0)}): ${formatDetailedList(pullLog.gradesAdded)}\n`;
+            if ((pullLog.gradesUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث درجات (${(pullLog.gradesUpdated?.length || 0)}): ${formatDetailedList(pullLog.gradesUpdated)}\n`;
         }
 
         if (!hasPush && !hasPull && !settingsUpdated) {
