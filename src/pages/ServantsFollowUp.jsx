@@ -56,6 +56,7 @@ export default function ServantsFollowUp() {
                     id: sId,
                     uid: sId,
                     name: s.name,
+                    osraName: s.osraName || s.syncKey || "غير محدد",
                     weekDate,
                     month: weekDate.substring(0, 7),
                     attendance: "حضور",
@@ -176,6 +177,7 @@ export default function ServantsFollowUp() {
                                 <tr>
                                     <th className="p-4 text-center border-r border-slate-700 w-12">الصورة</th>
                                     <th className="p-4 min-w-[150px]">اسم الخادم</th>
+                                    <th className="p-4 min-w-[120px]">الأسرة</th>
                                     <th className="p-4 text-center min-w-[120px]">الحضور العام</th>
                                     <th className="p-4 text-center">قداس</th>
                                     <th className="p-4 text-center">التحضير</th>
@@ -187,7 +189,7 @@ export default function ServantsFollowUp() {
                                     <th className="p-4 min-w-[200px]">ملاحظات أمين الخدمة</th>
                                 </tr>
                                 <tr className="bg-slate-800/50 text-[10px] text-slate-400 border-b border-slate-700">
-                                    <th colSpan="8"></th>
+                                    <th colSpan="9"></th>
                                     <th className="p-2 text-center border-r border-slate-700 min-w-[100px]">الخدمة</th>
                                     <th className="p-2 text-center border-l border-slate-700 min-w-[140px]">الايبارشية</th>
                                     <th></th>
@@ -207,6 +209,11 @@ export default function ServantsFollowUp() {
                                             )}
                                         </td>
                                         <td className="p-4 font-black text-emerald-400">{s.name}</td>
+                                        <td className="p-4 text-center">
+                                            <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">
+                                                {s.osraName}
+                                            </span>
+                                        </td>
                                         <td className="p-4">
                                             <select 
                                                 value={s.attendance} 
