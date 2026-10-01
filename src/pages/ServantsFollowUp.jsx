@@ -3,7 +3,6 @@ import { ArrowRight, ClipboardList, Search, Save, CheckCircle2, Calendar } from 
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, onSnapshot, query, where, setDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
-import { TENANT_CONFIG } from '../config/tenantConfig';
 
 export default function ServantsFollowUp() {
     const navigate = useNavigate();
@@ -12,9 +11,18 @@ export default function ServantsFollowUp() {
 
     const getOsraName = (key) => {
         if (!key || key === 'الكل') return key || "غير محدد";
-        const osras = TENANT_CONFIG?.osras || [];
-        const osra = osras.find(o => String(o.syncKey) === String(key));
-        return osra ? osra.name : key;
+        try {
+            const settings = JSON.parse(localStorage.getItem('appSettings')) || {};
+            const services = settings.services || [];
+            let foundName = key;
+            services.forEach(service => {
+                const foundOsra = (service.osras || []).find(o => String(o.syncKey).trim() === String(key).trim());
+                if (foundOsra) foundName = foundOsra.name;
+            });
+            return foundName;
+        } catch(e) {
+            return key;
+        }
     };
 
     const getServiceFriday = (date = new Date()) => {
