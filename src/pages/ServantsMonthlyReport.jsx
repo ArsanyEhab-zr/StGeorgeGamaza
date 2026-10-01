@@ -3,6 +3,7 @@ import { Printer, ArrowRight, Calendar, Filter, Loader2, Users, LayoutList } fro
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
+import { TENANT_CONFIG } from '../config/tenantConfig';
 
 export default function ServantsMonthlyReport() {
     const navigate = useNavigate();
@@ -15,8 +16,13 @@ export default function ServantsMonthlyReport() {
     const [viewMode, setViewMode] = useState('monthly'); // 'monthly' or 'yearly'
     const [monthYear, setMonthYear] = useState(getCurrentMonthYear());
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-    const [stageFilter, setStageFilter] = useState("الكل");
     const [osraFilter, setOsraFilter] = useState("الكل");
+
+    const getOsraName = (key) => {
+        if (!key || key === 'الكل') return key;
+        const osra = TENANT_CONFIG.osras.find(o => o.syncKey === key);
+        return osra ? osra.name : key;
+    };
     
     const [reportData, setReportData] = useState([]);
     const [uniqueOsras, setUniqueOsras] = useState([]);
@@ -49,11 +55,8 @@ export default function ServantsMonthlyReport() {
                 });
                 setUniqueOsras(Array.from(osras));
 
-                // Filter servants by Stage & Osra
+                // Filter servants by Osra
                 let filteredServants = baseServants;
-                if (stageFilter !== "الكل") {
-                    filteredServants = filteredServants.filter(s => s.stage === stageFilter);
-                }
                 if (osraFilter !== "الكل") {
                     filteredServants = filteredServants.filter(s => s.osraName === osraFilter);
                 }
@@ -156,7 +159,7 @@ export default function ServantsMonthlyReport() {
         };
 
         fetchReport();
-    }, [monthYear, selectedYear, viewMode, stageFilter, osraFilter]);
+    }, [monthYear, selectedYear, viewMode, osraFilter]);
 
     const handlePrint = () => {
         window.print();
@@ -241,7 +244,7 @@ export default function ServantsMonthlyReport() {
                     {viewMode === 'monthly' ? 'التقرير الشهري لمتابعة وتقييم الخدام' : `التقرير السنوي للخدام - لعام ${selectedYear}`}
                 </h1>
                 <h2 className="text-lg font-bold">
-                    {viewMode === 'monthly' ? `عن شهر: ${monthYear}` : `الأسرة: ${osraFilter}`} | المرحلة: {stageFilter}
+                    {viewMode === 'monthly' ? `عن شهر: ${monthYear}` : `الأسرة: ${getOsraName(osraFilter)}`}
                 </h2>
             </div>
 
@@ -309,21 +312,6 @@ export default function ServantsMonthlyReport() {
                             )}
                         </div>
                         
-                        {/* Stage Filter */}
-                        <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                            <Filter className="text-slate-500" size={18} />
-                            <select 
-                                value={stageFilter} 
-                                onChange={(e) => setStageFilter(e.target.value)} 
-                                className="bg-transparent border-none outline-none font-bold text-sm text-slate-700"
-                            >
-                                <option value="الكل">كل المراحل</option>
-                                <option value="ابتدائي">ابتدائي</option>
-                                <option value="اعدادي">اعدادي</option>
-                                <option value="ثانوي">ثانوي</option>
-                            </select>
-                        </div>
-
                         {/* Osra Filter */}
                         <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
                             <Users className="text-slate-500" size={18} />
@@ -334,7 +322,7 @@ export default function ServantsMonthlyReport() {
                             >
                                 <option value="الكل">كل الأسر</option>
                                 {uniqueOsras.map(osra => (
-                                    <option key={osra} value={osra}>{osra}</option>
+                                    <option key={osra} value={osra}>{getOsraName(osra)}</option>
                                 ))}
                             </select>
                         </div>
@@ -408,7 +396,7 @@ export default function ServantsMonthlyReport() {
                                     <tr key={s.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="p-3 border border-slate-200 font-bold text-slate-500">{s.index || index + 1}</td>
                                         <td className="p-3 border border-slate-200 font-black text-slate-800 text-right">{s.name}</td>
-                                        <td className="p-3 border border-slate-200 font-bold text-indigo-600 bg-indigo-50/30 text-xs">{s.osraName}</td>
+                                        <td className="p-3 border border-slate-200 font-bold text-indigo-600 bg-indigo-50/30 text-xs">{getOsraName(s.osraName)}</td>
                                         
                                         {viewMode === 'monthly' ? (
                                             <>
