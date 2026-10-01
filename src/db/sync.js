@@ -104,7 +104,11 @@ const _syncDataWithCloud = async () => {
             cloudAttendance = (attendanceSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const eventsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'events'));
-            cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
+            const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
+            cloudEvents = [
+                ...(eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean),
+                ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
+            ];
             
         }
 
@@ -171,7 +175,8 @@ const _syncDataWithCloud = async () => {
         try { for (const event of localEvents) {
             if (!event.isDirty) continue; // ✨ Skip clean records
 
-            const targetKey = isAdmin ? event.syncKey : currentSyncKey;
+            let targetKey = isAdmin ? event.syncKey : currentSyncKey;
+            if (event.isGlobal) targetKey = 'global';
             if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
 
             const docRef = doc(firestore, 'Osras', targetKey, 'events', event.id.toString());
@@ -293,7 +298,9 @@ const _syncDataWithCloud = async () => {
             if (pushedEventsIds.has(cloudEvent.id)) continue;
             
             const localMatch = localEventsMap.get(cloudEvent.id);
-            const syncKeyToSave = isAdmin ? (cloudEvent.syncKey || currentSyncKey) : currentSyncKey;
+            let syncKeyToSave = isAdmin ? (cloudEvent.syncKey || currentSyncKey) : currentSyncKey;
+            if (cloudEvent.isGlobal || cloudEvent.syncKey === 'global') syncKeyToSave = 'global';
+            
             const eventToSave = { ...cloudEvent, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudEvent.updatedAt || now };
 
             if (!localMatch) {

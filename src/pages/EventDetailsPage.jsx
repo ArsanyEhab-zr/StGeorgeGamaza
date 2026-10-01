@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db } from '../db/database';
 // 🌟 ضفنا أيقونة Plus عشان زرار إضافة المهمة الجديدة
-import { ArrowRight, Check, Square, Calendar, Plus, Edit, Trash2, X, PlusCircle, Link, MapPin, SearchCheck, MessageCircleWarning, ShieldAlert, BadgeCent } from 'lucide-react';
+import { ArrowRight, Check, Square, Calendar, CalendarDays, Plus, Edit, Trash2, X, PlusCircle, Link, MapPin, SearchCheck, MessageCircleWarning, ShieldAlert, BadgeCent } from 'lucide-react';
 import useAutoSync from '../hooks/useAutoSync';
 import { format } from 'date-fns';
 import { ar } from 'date-fns/locale';
