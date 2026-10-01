@@ -6,7 +6,7 @@ import { db } from '../db/database';
 // 🌟 استدعاء فايربيز عشان زرار المزامنة
 import { doc, getDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
-import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle } from 'lucide-react';
 import ExcelExporter from '../components/ExcelExporter';
 import { TENANT_CONFIG } from '../config/tenantConfig';
 
@@ -188,6 +188,45 @@ export default function MasterDashboard() {
         }
     };
 
+    const pendingInterventions = useMemo(() => {
+        if (!children) return [];
+        let interventions = [];
+        children.forEach(child => {
+            const isChildInScope = isSuperAdmin || isPriest || allowedOsras.some(o => o.syncKey === child.syncKey);
+            if (!isChildInScope) return;
+
+            if (child.notes && Array.isArray(child.notes)) {
+                child.notes.forEach(note => {
+                    if (note?.requiresIntervention && note?.interventionStatus === 'pending') {
+                        interventions.push({ ...note, childId: child.id });
+                    }
+                });
+            }
+        });
+        return interventions.sort((a, b) => new Date(b.date) - new Date(a.date));
+    }, [children, allowedOsras, isSuperAdmin, isPriest]);
+
+    const handleResolveIntervention = async (childId, noteId) => {
+        if (!window.confirm('هل أنت متأكد من حل هذه المشكلة وإغلاق طلب التدخل؟')) return;
+        
+        try {
+            const childToUpdate = await db.children.get(childId);
+            if (childToUpdate && childToUpdate.notes) {
+                const updatedNotes = childToUpdate.notes.map(n => 
+                    n.id === noteId ? { ...n, interventionStatus: 'resolved' } : n
+                );
+                await db.children.update(childId, {
+                    notes: updatedNotes,
+                    isDirty: true,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+        } catch (error) {
+            console.error('Error resolving intervention:', error);
+            alert('حدث خطأ أثناء إغلاق الطلب.');
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20" dir="rtl">
             <header className="bg-linear-to-l from-amber-600 to-yellow-500 text-white p-4 sticky top-0 z-50 shadow-lg rounded-b-[2.5rem]">
@@ -207,6 +246,42 @@ export default function MasterDashboard() {
             </header>
 
             <main className="p-4 max-w-4xl mx-auto mt-4">
+
+                {/* 🚨 قسم طلبات التدخل الرعوي العاجلة */}
+                {!selectedOsraKey && pendingInterventions.length > 0 && (
+                    <div className="mb-8 animate-in fade-in slide-in-from-top-4">
+                        <div className="flex items-center gap-2 mb-4 bg-red-100 p-3 rounded-2xl border border-red-200">
+                            <AlertTriangle className="text-red-600" size={24} />
+                            <h2 className="text-lg font-black text-red-800">طلبات التدخل الرعوي العاجلة ({pendingInterventions.length})</h2>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4">
+                            {pendingInterventions.map((intervention) => (
+                                <div key={intervention.id} className="bg-white p-5 rounded-3xl border-2 border-red-100 shadow-md relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-2 h-full bg-red-500"></div>
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4 pl-4 pr-6">
+                                        <div>
+                                            <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
+                                                {intervention.childName} <span className="text-xs font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{intervention.osraName}</span>
+                                            </h3>
+                                            <p className="text-xs font-bold text-slate-400 mt-1 flex items-center gap-1">
+                                                <UserCircle size={14} /> الخادم المُبلغ: <span className="text-slate-700">{intervention.servantName}</span> • {new Date(intervention.date).toLocaleDateString('ar-EG')}
+                                            </p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleResolveIntervention(intervention.childId, intervention.id)} 
+                                            className="bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-xl font-black text-sm transition-colors flex items-center gap-2 w-full md:w-auto justify-center"
+                                        >
+                                            <CheckCircle size={16} /> تمت المتابعة وحل المشكلة
+                                        </button>
+                                    </div>
+                                    <div className="bg-red-50 p-4 rounded-2xl border border-red-100 text-sm font-bold text-red-900 whitespace-pre-wrap leading-relaxed mr-6">
+                                        "{intervention.text}"
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* 🌟 الشاشة الأولى: لستة الأسر */}
                 {!selectedOsraKey && (

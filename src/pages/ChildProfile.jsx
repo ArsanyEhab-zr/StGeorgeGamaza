@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
-import { ArrowRight, Phone, Save, History, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const ChildProfile = () => {
     const { triggerAutoSync } = useAutoSync();
@@ -14,16 +14,23 @@ const ChildProfile = () => {
 
     const [isSaving, setIsSaving] = useState(false);
     const [aiSummary, setAiSummary] = useState('');
+    const [isInterventionRequired, setIsInterventionRequired] = useState(false);
 
     const saveNote = async () => {
         if (!aiSummary || isSaving) return;
         setIsSaving(true);
         
         const now = new Date().toISOString();
+        const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
         const newNote = {
             id: Date.now(),
             text: aiSummary,
-            date: now
+            date: now,
+            requiresIntervention: isInterventionRequired,
+            interventionStatus: isInterventionRequired ? 'pending' : 'resolved',
+            servantName: currentServant.name || 'خادم غير معروف',
+            childName: child.name || 'مخدوم',
+            osraName: currentServant.assignedOsra || child.stage || 'غير محدد'
         };
         
         const updatedNotes = child.notes ? [...child.notes, newNote] : [newNote];
@@ -36,6 +43,7 @@ const ChildProfile = () => {
 
         setIsSaving(false);
         setAiSummary('');
+        setIsInterventionRequired(false);
         
         triggerAutoSync();
         alert('تم حفظ تقرير الافتقاد في ملف البطل بنجاح! ✅');
@@ -97,6 +105,18 @@ const ChildProfile = () => {
                                         className="w-full bg-black/20 text-white p-3 rounded-xl border border-white/10 text-sm focus:ring-2 focus:ring-purple-400 outline-none min-h-[150px] mb-4"
                                         placeholder="اكتب تفاصيل الافتقاد هنا..."
                                     />
+                                    <div className="flex items-center gap-2 mb-4 bg-amber-500/10 p-3 rounded-xl border border-amber-500/30">
+                                        <input 
+                                            type="checkbox" 
+                                            id="intervention" 
+                                            checked={isInterventionRequired} 
+                                            onChange={(e) => setIsInterventionRequired(e.target.checked)}
+                                            className="w-5 h-5 accent-amber-500 rounded cursor-pointer"
+                                        />
+                                        <label htmlFor="intervention" className="text-amber-200 font-bold text-sm cursor-pointer flex items-center gap-1">
+                                            <AlertTriangle size={16} /> طلب تدخل أبوي (تصعيد المشكلة لأبونا أو أمين الخدمة)
+                                        </label>
+                                    </div>
                                     <button onClick={saveNote} className="w-full bg-green-500 text-white py-3 rounded-2xl font-black flex justify-center items-center gap-2 hover:bg-green-600 active:scale-95 transition-all shadow-lg">
                                         <Save size={18} /> حفظ التقرير في ملف البطل
                                     </button>
@@ -115,8 +135,13 @@ const ChildProfile = () => {
                         <div className="space-y-4">
                             {[...child.notes].reverse().map(note => (
                                 <div key={note.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <p className="text-[10px] text-slate-400 font-bold mb-2">
-                                        {new Date(note.date).toLocaleString('ar-EG')}
+                                    <p className="text-[10px] text-slate-400 font-bold mb-2 flex justify-between">
+                                        <span>{new Date(note.date).toLocaleString('ar-EG')}</span>
+                                        {note.requiresIntervention && (
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${note.interventionStatus === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                {note.interventionStatus === 'resolved' ? 'تم حل المشكلة' : 'تدخل أبوي عاجل'}
+                                            </span>
+                                        )}
                                     </p>
                                     <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap leading-relaxed">
                                         {note.text}
