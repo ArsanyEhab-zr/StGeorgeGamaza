@@ -26,7 +26,7 @@ export default function CalendarPage() {
     };
 
     useEffect(() => {
-        localStorage.setItem('lastViewedCalendar', Date.now().toString());
+        localStorage.setItem('lastSeenGlobalEventTime', Date.now().toString());
         fetchEvents();
     }, [currentSyncKey]);
 

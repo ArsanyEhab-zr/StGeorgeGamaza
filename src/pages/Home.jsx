@@ -52,8 +52,12 @@ export default function Home() {
 
     // 🌟 عدد الأحداث العامة الغير مقروءة
     const unseenGlobalEventsCount = useLiveQuery(() => {
-        const lastViewed = parseInt(localStorage.getItem('lastViewedCalendar') || '0', 10);
-        return db.events.filter(e => e.isGlobal === true && (e.createdAt || 0) > lastViewed).count();
+        const lastViewed = parseInt(localStorage.getItem('lastSeenGlobalEventTime') || '0', 10);
+        const todayStr = new Date().toISOString().split('T')[0];
+        return db.events.filter(e => {
+            const isGlobal = e.isGlobal === true || e.syncKey === 'global';
+            return isGlobal && (e.date >= todayStr) && ((e.createdAt || 0) > lastViewed);
+        }).count();
     }, []);
 
     useEffect(() => {
@@ -336,12 +340,20 @@ export default function Home() {
 
                                 {/* 🌟 زرار الكلندر موجود للكل يقدر يدوس عليه */}
                                 <div
-                                    onClick={() => navigate('/calendar')}
+                                    onClick={() => {
+                                        localStorage.setItem('lastSeenGlobalEventTime', Date.now().toString());
+                                        navigate('/calendar');
+                                    }}
                                     className="flex flex-col gap-1 mt-3 cursor-pointer hover:scale-[1.02] active:scale-95 transition-all group select-none relative"
                                     title="افتح أجندة الخدمة والمهام"
                                 >
                                     {unseenGlobalEventsCount > 0 && (
-                                        <span className="absolute -top-1 -right-2 w-3 h-3 bg-red-500 border-2 border-white rounded-full animate-pulse z-10"></span>
+                                        <div className="absolute -top-3 -right-2 z-10 flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-full border border-red-200 shadow-sm">
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                            </span>
+                                            <span className="text-[9px] font-black text-red-600">حدث جديد</span>
+                                        </div>
                                     )}
                                     <div className="inline-flex items-center gap-1.5 text-[11px] md:text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg w-fit group-hover:bg-blue-50 group-hover:text-blue-700 border border-transparent group-hover:border-blue-200 transition-colors shadow-sm">
                                         <CalendarDays size={14} className="text-blue-500 group-hover:scale-110 transition-transform" /> {gregorianDate}
