@@ -107,7 +107,7 @@ export default function Visitation() {
     };
 
     const generateVisitationMsg = (child) => {
-        const title = child.gender === 'بنت' ? 'بطلتنا الجميلة' : 'بطلنا الغالي';
+        const title = child.gender === 'بنت' ? 'مخدومتنا الجميلة' : 'مخدومنا الغالي';
         const namePart = child.name ? child.name.split(' ')[0] : '';
         let msg = `أزيك يا ${title} ${namePart ? `(${namePart})` : ''}! 🌟\nعامل إيه؟ افتقدناك جداً وحابين نطمن عليك..`;
         return `https://api.whatsapp.com/send?phone=${cleanPhoneNumber(getTargetPhone(child))}&text=${encodeURIComponent(msg)}`;
@@ -115,7 +115,7 @@ export default function Visitation() {
 
     const generateOnMyWayMsg = (child) => {
         const namePart = child.name ? child.name.split(' ')[0] : '';
-        let msg = `أزيك يا ${namePart ? `(${namePart})` : 'بطل'}! 🏃‍♂️\nأنا في طريقي ليك دلوقتي عشان أسلم عليك، جاهز؟`;
+        let msg = `أزيك يا ${namePart ? `(${namePart})` : 'مخدوم'}! 🏃‍♂️\nأنا في طريقي ليك دلوقتي عشان أسلم عليك، جاهز؟`;
         return `https://api.whatsapp.com/send?phone=${cleanPhoneNumber(getTargetPhone(child))}&text=${encodeURIComponent(msg)}`;
     };
 
@@ -127,7 +127,7 @@ export default function Visitation() {
                 <div className="max-w-4xl mx-auto">
                     <div className="relative mb-4">
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" placeholder="ابحث عن بطل على الخريطة..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pr-10 pl-4 py-3 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
+                        <input type="text" placeholder="ابحث عن مخدوم على الخريطة..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pr-10 pl-4 py-3 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/40" />
                     </div>
                     <div className="flex gap-2 justify-center">
                         {[{ id: "all", label: "الكل 🌟" }, { id: "boys", label: "ولاد 👦" }, { id: "girls", label: "بنات 👧" }].map(f => (
@@ -142,7 +142,7 @@ export default function Visitation() {
                     <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"><MapPinned size={28} /></div>
                     <div>
                         <h1 className="font-black text-xl">خريطة الافتقاد التفاعلية</h1>
-                        <p className="text-xs font-medium text-indigo-100 mt-1">اضغط على البطل لتسجيل الزيارة أو تحديد موقعه 📍</p>
+                        <p className="text-xs font-medium text-indigo-100 mt-1">اضغط على المخدوم لتسجيل الزيارة أو تحديد موقعه 📍</p>
                     </div>
                 </div>
 
@@ -180,7 +180,7 @@ export default function Visitation() {
                                                     <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 ${isSelected ? 'border-t-indigo-600' : (isVisitedRecently ? 'border-t-green-400 opacity-70' : 'border-t-white')}`}></div>
 
                                                     <span className={`text-[10px] font-black mt-1 px-2.5 py-0.5 rounded-full shadow-sm transition-colors max-w-17.5 truncate ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 group-hover:bg-slate-100'}`}>
-                                                        {child.name ? child.name.split(' ')[0] : 'بطل'}
+                                                        {child.name ? child.name.split(' ')[0] : 'مخدوم'}
                                                     </span>
                                                 </button>
                                             </div>

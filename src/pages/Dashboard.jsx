@@ -148,7 +148,7 @@ export default function Dashboard() {
                                 <p className="text-xs font-bold text-slate-300">
                                     {isMaster ? 'لوحة تحكم الأدمن' : currentView === 'menu' ? 'غرفة الإدارة' :
                                         currentView === 'stats' ? 'الإحصائيات والداتا' :
-                                            currentView === 'kids' ? 'مرايا الأبطال' : 'إخوة الرب'}
+                                            currentView === 'kids' ? 'مرايا المخدومين' : 'إخوة الرب'}
                                 </p>
                             </div>
                         </div>
@@ -183,12 +183,12 @@ export default function Dashboard() {
                                 </>
                             )}
 
-                            {/* 🌟 إخفاء مرايا الأبطال والذكاء الاصطناعي عن الأدمن/الكاهن */}
+                            {/* 🌟 إخفاء مرايا المخدومين والذكاء الاصطناعي عن الأدمن/الكاهن */}
                             {!isMaster && (
                                 <button onClick={() => setCurrentView('kids')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-blue-50 hover:border-blue-200 transition-all flex flex-col items-center text-center group">
                                     <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><Users size={32} /></div>
-                                    <h2 className="text-xl font-black text-slate-800">مرايا الأبطال</h2>
-                                    <p className="text-xs font-bold text-slate-500 mt-1">إضافة أبطال، وتعديل كل البيانات الشاملة</p>
+                                    <h2 className="text-xl font-black text-slate-800">مرايا المخدومين</h2>
+                                    <p className="text-xs font-bold text-slate-500 mt-1">إضافة مخدومين، وتعديل كل البيانات الشاملة</p>
                                 </button>
                             )}
 
@@ -300,7 +300,7 @@ function StatsView({ childrenData, appSettings }) {
         }
 
         if (dataToExport.length === 0) {
-            alert("لا يوجد أبطال في هذه الفئة لتصديرهم! 🤷‍♂️");
+            alert("لا يوجد مخدومين في هذه الفئة لتصديرهم! 🤷‍♂️");
             return;
         }
 
@@ -315,7 +315,7 @@ function StatsView({ childrenData, appSettings }) {
 
             return {
                 "م": c.id,
-                "اسم البطل": c.name || 'بدون اسم',
+                "اسم المخدوم": c.name || 'بدون اسم',
                 "النوع": c.gender || 'غير محدد',
                 "تاريخ الميلاد": c.birthDate || 'غير مسجل',
                 "العمر التقريبي": calculatedAge,
@@ -366,7 +366,7 @@ function StatsView({ childrenData, appSettings }) {
     };
 
     const handleNuclearDelete = async () => {
-        if (window.confirm("⚠️ تحذير نهائي وقاتل: إنت بتمسح كل الأبطال وكل الغياب من الموبايل نهائياً! هل إنت متأكد؟")) {
+        if (window.confirm("⚠️ تحذير نهائي وقاتل: إنت بتمسح كل المخدومين وكل الغياب من الموبايل نهائياً! هل إنت متأكد؟")) {
             const pass = prompt(`اكتب كلمة (${appSettings.deletePass}) للتأكيد النهائي:`);
             if (pass === appSettings.deletePass) {
                 try {
@@ -400,7 +400,7 @@ function StatsView({ childrenData, appSettings }) {
             <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center col-span-2">
                     <Users className="text-indigo-50 mb-1 w-8 h-8" />
-                    <h3 className="text-slate-500 font-black text-xs">إجمالي الأبطال المقيدين</h3>
+                    <h3 className="text-slate-500 font-black text-xs">إجمالي المخدومين المقيدين</h3>
                     <p className="text-3xl font-black text-slate-800">{total}</p>
                     <div className="flex gap-4 mt-2 text-[10px] font-bold text-slate-600 bg-slate-50 px-4 py-1.5 rounded-full">
                         <span>👦 {boys} ولاد</span><span>👧 {girls} بنات</span>
@@ -469,7 +469,7 @@ function StatsView({ childrenData, appSettings }) {
                             <div key={date} className="relative pl-4 border-r-2 border-emerald-200">
                                 <div className="absolute w-3 h-3 bg-emerald-500 rounded-full -right-1.75 top-1 border-2 border-white shadow-sm"></div>
                                 <h3 className="text-[11px] font-black text-emerald-800 mb-1 flex items-center gap-2">
-                                    📅 {date} <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md text-[9px]">({visitationsByDate[date].length} أطفال)</span>
+                                    📅 {date} <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-md text-[9px]">({visitationsByDate[date].length} مخدومين)</span>
                                 </h3>
                                 <p className="text-[10px] font-bold text-slate-500 leading-6">
                                     {visitationsByDate[date].join('، ')}
@@ -514,7 +514,7 @@ function StatsView({ childrenData, appSettings }) {
                     </button>
 
                     <button onClick={handleNuclearDelete} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-xs hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-sm">
-                        <Trash2 size={16} /> مسح كل الأبطال والغياب (Clean Slate)
+                        <Trash2 size={16} /> مسح كل المخدومين والغياب (Clean Slate)
                     </button>
                 </div>
             </div>
@@ -577,7 +577,7 @@ function KidsManagerView({ childrenData }) {
 
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formChild.name) return alert("اكتب اسم البطل الأول!");
+        if (!formChild.name) return alert("اكتب اسم المخدوم الأول!");
 
         let bMonth = null;
         if (formChild.birthDate) {
@@ -613,7 +613,7 @@ function KidsManagerView({ childrenData }) {
     };
 
     const handleDelete = async (id) => {
-        if (window.confirm("متأكد إنك عايز تمسح البطل ده نهائياً؟")) {
+        if (window.confirm("متأكد إنك عايز تمسح المخدوم ده نهائياً؟")) {
             const now = new Date().toISOString();
             await db.children.update(id, { isDeleted: true, isDirty: true, updatedAt: now });
             triggerAutoSync();
@@ -624,7 +624,7 @@ function KidsManagerView({ childrenData }) {
         return (
             <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 animate-in slide-in-from-bottom-4 mb-6">
                 <h3 className="font-black text-xl mb-6 flex items-center gap-2 text-indigo-700">
-                    {editingChild ? <><Edit3 size={24} /> تعديل بيانات البطل</> : <><UserPlus size={24} /> استمارة بطل جديد</>}
+                    {editingChild ? <><Edit3 size={24} /> تعديل بيانات المخدوم</> : <><UserPlus size={24} /> استمارة مخدوم جديد</>}
                 </h3>
 
                 <form onSubmit={handleSave} className="space-y-6">
@@ -749,7 +749,7 @@ function KidsManagerView({ childrenData }) {
                     <div className="flex gap-2 pt-4 border-t border-slate-100">
                         <button type="button" onClick={() => { setIsAdding(false); setEditingChild(null); setFormChild(emptyChild); }} className="flex-1 py-4 rounded-xl font-black bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">إلغاء</button>
                         <button type="submit" className="flex-2 py-4 rounded-xl font-black bg-indigo-600 text-white shadow-md hover:bg-indigo-700 transition-colors flex justify-center items-center gap-2">
-                            <Save size={20} /> حفظ البطل
+                            <Save size={20} /> حفظ المخدوم
                         </button>
                     </div>
                 </form>
@@ -769,7 +769,7 @@ function KidsManagerView({ childrenData }) {
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input type="text" placeholder="ابحث لتعديل البيانات..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pr-10 pl-4 py-3 rounded-2xl bg-white border border-slate-200 font-bold focus:ring-2 focus:ring-indigo-500 shadow-sm" />
                     </div>
-                    <button onClick={() => { setFormChild(emptyChild); setIsAdding(true); }} aria-label="إضافة بطل جديد" className="bg-indigo-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-md shrink-0 hover:bg-indigo-700 transition-colors">
+                    <button onClick={() => { setFormChild(emptyChild); setIsAdding(true); }} aria-label="إضافة مخدوم جديد" className="bg-indigo-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-md shrink-0 hover:bg-indigo-700 transition-colors">
                         <UserPlus size={20} />
                     </button>
                 </div>
@@ -783,7 +783,7 @@ function KidsManagerView({ childrenData }) {
 
             <div className="space-y-3">
                 {filtered.length === 0 ? (
-                    <div className="text-center py-10 text-slate-400 font-bold bg-white rounded-3xl border border-dashed border-slate-200">لا يوجد أبطال بهذا الاسم.</div>
+                    <div className="text-center py-10 text-slate-400 font-bold bg-white rounded-3xl border border-dashed border-slate-200">لا يوجد مخدومين بهذا الاسم.</div>
                 ) : (
                     filtered.slice(0, 50).map(child => (
                         <div key={child.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-3">

@@ -155,7 +155,7 @@ export default function ParentDashboard() {
     const totalServices = attendance ? attendance.filter(a => a.type === 'service').length : 0;
     const totalLiturgies = attendance ? attendance.filter(a => a.type === 'liturgy').length : 0;
 
-    const displayName = childInfo?.name || childName || 'البطل';
+    const displayName = childInfo?.name || childName || 'المخدوم';
     const displayClass = childInfo?.className || childInfo?.osraName || className || TENANT_CONFIG.APP_NAME;
     const childImg = childInfo?.profilePic || childInfo?.image || childInfo?.photo;
 
@@ -164,7 +164,7 @@ export default function ParentDashboard() {
             <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-b-[2.5rem] shadow-lg sticky top-0 z-50">
                 <div className="max-w-4xl mx-auto flex items-center justify-between">
                     <div>
-                        <h1 className="text-xl font-black mb-1">أهلاً بك يا بطل</h1>
+                        <h1 className="text-xl font-black mb-1">أهلاً بك يا مخدوم</h1>
                         <p className="text-sm font-bold text-blue-100">{displayName} - {displayClass}</p>
                     </div>
                     <button onClick={handleLogout} className="bg-white/20 hover:bg-white/30 p-3 rounded-full transition-colors">

@@ -135,7 +135,7 @@ export default function useQrScanner() {
         // Duplicate check
         if (scannedIdsRef.current.has(childId)) {
             triggerFlash('amber');
-            showToast(`⚠️ تم مسح هذا البطل بالفعل`, 'warning');
+            showToast(`⚠️ تم مسح هذا المخدوم بالفعل`, 'warning');
             if (!isMuted) playBeep(400, 120, 0.2);
             return;
         }

@@ -180,7 +180,7 @@ export default function ParentLogin() {
                 // Redirect to parent dashboard
                 navigate('/parent-dashboard');
             } else {
-                setErrorMsg('لم يتم العثور على طفل مسجل بهذا الرقم في هذا الفصل.');
+                setErrorMsg('لم يتم العثور على مخدوم مسجل بهذا الرقم في هذا الفصل.');
             }
         } catch (error) {
             console.error(error);
@@ -200,7 +200,7 @@ export default function ParentLogin() {
                         <User size={36} strokeWidth={1.5} />
                     </div>
                     <h2 className="text-2xl font-black text-slate-800">دخول أولياء الأمور</h2>
-                    <p className="text-sm font-bold text-slate-500 mt-2">تابع حضور وتقييمات طفلك بسهولة</p>
+                    <p className="text-sm font-bold text-slate-500 mt-2">تابع حضور وتقييمات مخدومك بسهولة</p>
                 </div>
 
                 {errorMsg && (

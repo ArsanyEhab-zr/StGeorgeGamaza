@@ -131,14 +131,14 @@ export default function InfoDirectory() {
                 <div className="bg-emerald-50 p-4 rounded-3xl mb-6 flex items-center gap-3">
                     <Info className="text-emerald-600" size={24} />
                     <div>
-                        <h2 className="font-black text-emerald-800">دليل الأبطال</h2>
+                        <h2 className="font-black text-emerald-800">دليل المخدومين</h2>
                         <p className="text-xs font-bold text-emerald-600/80">اضغط لفتح الملف والصور</p>
                     </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredChildren.length === 0 ? (
-                        <div className="col-span-full text-center py-10 text-slate-400 font-bold border-2 border-dashed border-slate-200 rounded-3xl">لا يوجد أبطال مطابقين للبحث.</div>
+                        <div className="col-span-full text-center py-10 text-slate-400 font-bold border-2 border-dashed border-slate-200 rounded-3xl">لا يوجد مخدومين مطابقين للبحث.</div>
                     ) : (
                         filteredChildren.map(child => {
                             const isBday = isBirthdayToday(child.birthDate); // 🥳 فحص عيد الميلاد

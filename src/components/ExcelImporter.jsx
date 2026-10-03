@@ -121,7 +121,7 @@ export default function ExcelImporter() {
                 }
 
                 triggerAutoSync();
-                alert(`مبروك! تم استيراد وتحديث ${validData.length} بطل بنجاح (بما فيها أعياد الميلاد)! 🎉`);
+                alert(`مبروك! تم استيراد وتحديث ${validData.length} مخدوم بنجاح (بما فيها أعياد الميلاد)! 🎉`);
                 window.location.reload();
             } catch (err) {
                 console.error(err);
@@ -137,7 +137,7 @@ export default function ExcelImporter() {
         <label className={`flex items-center justify-center gap-3 w-full py-4 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${isImporting ? 'bg-slate-100 border-slate-300' : 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100'}`}>
             {isImporting ? <Loader2 className="animate-spin text-indigo-600" size={20} /> : <Upload className="text-indigo-600" size={20} />}
             <span className="text-sm font-black text-indigo-700">
-                {isImporting ? 'جاري معالجة البيانات والأعياد...' : 'رفع شيت أبطال الخدمة (Excel)'}
+                {isImporting ? 'جاري معالجة البيانات والأعياد...' : 'رفع شيت المخدومين (Excel)'}
             </span>
             <input type="file" accept=".xlsx, .xls, .csv" className="hidden" onChange={handleFileUpload} disabled={isImporting} />
         </label>

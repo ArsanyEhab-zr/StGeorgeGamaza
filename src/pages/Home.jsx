@@ -253,7 +253,7 @@ export default function Home() {
     };
 
     const generateMissedFridayMsg = (child, specificTarget = null) => {
-        const title = child.gender === 'بنت' ? 'بطلتنا' : 'بطلنا';
+        const title = child.gender === 'بنت' ? 'مخدومتنا' : 'مخدومنا';
         const namePart = child.name ? child.name.split(' ')[0] : '';
         let msg = `وحشتنا يا ${title} ${namePart ? `(${namePart})` : ''}! 🥺💔\nمجتش ليه الجمعة اللي فاتت؟ مكانك كان فاضي، مستنيينك الجمعة الجاية ضروري!`;
         
@@ -491,7 +491,7 @@ export default function Home() {
 
                             <div className="w-full pt-4 border-t border-slate-100 mt-auto">
                                 <button onClick={() => setModalState({ isOpen: true, type: 'champions' })} className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl text-xs font-black shadow-md transition-all flex items-center justify-center gap-1.5">
-                                    🏆 عرض أبطال المواظبة
+                                    🏆 عرض مخدومين المواظبة
                                 </button>
                             </div>
                         </div>
@@ -546,7 +546,7 @@ export default function Home() {
                                     <BookOpen size={28} />
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-black text-white">دليل الأبطال</h2>
+                                    <h2 className="text-lg font-black text-white">دليل المخدومين</h2>
                                     <p className="text-xs text-indigo-200 mt-1 font-bold">
                                         عرض وتعديل بيانات المخدومين، المجموعات، والملفات الشخصية بالكامل
                                     </p>
@@ -596,7 +596,7 @@ export default function Home() {
                             </div>
                             <div>
                                 <h3 className="font-black text-indigo-900">حضور QR سريع</h3>
-                                <p className="text-xs text-slate-500 font-bold">مسح بطاقات الأبطال وتسجيل الحضور</p>
+                                <p className="text-xs text-slate-500 font-bold">مسح بطاقات المخدومين وتسجيل الحضور</p>
                             </div>
                         </Link>
 
@@ -606,7 +606,7 @@ export default function Home() {
                             </div>
                             <div>
                                 <h3 className="font-black text-indigo-900">طباعة كارنيهات QR</h3>
-                                <p className="text-xs text-slate-500 font-bold">إنشاء وطباعة بطاقات QR للأبطال</p>
+                                <p className="text-xs text-slate-500 font-bold">إنشاء وطباعة بطاقات QR للمخدومين</p>
                             </div>
                         </Link>
                     </div>
@@ -623,7 +623,7 @@ export default function Home() {
                                 {modalState.type === 'absent' && <><UserMinus size={20} /> مين غاب؟</>}
                                 {modalState.type === 'service' && <><BookOpen size={20} /> حضروا الخدمة</>}
                                 {modalState.type === 'liturgy' && <><Church size={20} /> حضروا القداس</>}
-                                {modalState.type === 'champions' && <><Award size={20} className="text-amber-500 animate-bounce" /> أبطال المواظبة</>}
+                                {modalState.type === 'champions' && <><Award size={20} className="text-amber-500 animate-bounce" /> مخدومين المواظبة</>}
                             </h2>
                             <button onClick={() => setModalState({ isOpen: false, type: null })} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"><X size={16} /></button>
                         </div>
@@ -646,7 +646,7 @@ export default function Home() {
                                             </div>
                                         ))
                                     ) : (
-                                        <p className="text-xs font-bold text-slate-400 text-center py-4">لا يوجد أبطال مواظبة حالياً</p>
+                                        <p className="text-xs font-bold text-slate-400 text-center py-4">لا يوجد مخدومين مواظبة حالياً</p>
                                     )}
                                 </div>
                             ) : (

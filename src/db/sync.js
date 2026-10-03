@@ -327,7 +327,7 @@ const _syncDataWithCloud = async () => {
                 await db.attendance.add({ ...dataToInsert, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
                 
                 const childInfo = await db.children.get(cAtt.childId);
-                const kidName = childInfo ? childInfo.name.split(' ')[0] : 'طفل';
+                const kidName = childInfo ? childInfo.name.split(' ')[0] : 'مخدوم';
                 pullLog.attendanceAdded.push(`${kidName}(${cAtt.date.slice(5)})`);
             }
         } } catch(e) { console.error('Error syncing attendance pull:', e); }
@@ -440,7 +440,7 @@ const _syncDataWithCloud = async () => {
         let hasPush = (pushLog.children?.length || 0) > 0 || (pushLog.attendance?.length || 0) > 0 || (pushLog.events?.length || 0) > 0 || (pushLog.grades?.length || 0) > 0 || (pushLog.exams?.length || 0) > 0;
         if (hasPush) {
             finalMessage += `⬆️ تم الرفع للسحابة:\n`;
-            if ((pushLog.children?.length || 0) > 0) finalMessage += `👦 أطفال (${(pushLog.children?.length || 0)}): ${formatDetailedList(pushLog.children)}\n`;
+            if ((pushLog.children?.length || 0) > 0) finalMessage += `👦 مخدومين (${(pushLog.children?.length || 0)}): ${formatDetailedList(pushLog.children)}\n`;
             if ((pushLog.attendance?.length || 0) > 0) finalMessage += `📅 غياب (${(pushLog.attendance?.length || 0)}): ${formatDetailedList(pushLog.attendance)}\n`;
             if ((pushLog.events?.length || 0) > 0) finalMessage += `🏕️ أحداث (${(pushLog.events?.length || 0)}): ${formatDetailedList(pushLog.events)}\n`;
             if ((pushLog.exams?.length || 0) > 0) finalMessage += `📝 امتحانات (${(pushLog.exams?.length || 0)}): ${formatDetailedList(pushLog.exams)}\n`;
@@ -451,8 +451,8 @@ const _syncDataWithCloud = async () => {
         let hasPull = (pullLog.childrenAdded?.length || 0) > 0 || (pullLog.childrenUpdated?.length || 0) > 0 || (pullLog.attendanceAdded?.length || 0) > 0 || (pullLog.eventsAdded?.length || 0) > 0 || (pullLog.eventsUpdated?.length || 0) > 0 || (pullLog.gradesAdded?.length || 0) > 0 || (pullLog.gradesUpdated?.length || 0) > 0 || (pullLog.examsAdded?.length || 0) > 0 || (pullLog.examsUpdated?.length || 0) > 0;
         if (hasPull) {
             finalMessage += `⬇️ تم الاستقبال من السحابة:\n`;
-            if ((pullLog.childrenAdded?.length || 0) > 0) finalMessage += `➕ أطفال جُداد (${(pullLog.childrenAdded?.length || 0)}): ${formatDetailedList(pullLog.childrenAdded)}\n`;
-            if ((pullLog.childrenUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث أطفال (${(pullLog.childrenUpdated?.length || 0)}): ${formatDetailedList(pullLog.childrenUpdated)}\n`;
+            if ((pullLog.childrenAdded?.length || 0) > 0) finalMessage += `➕ مخدومين جُداد (${(pullLog.childrenAdded?.length || 0)}): ${formatDetailedList(pullLog.childrenAdded)}\n`;
+            if ((pullLog.childrenUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث مخدومين (${(pullLog.childrenUpdated?.length || 0)}): ${formatDetailedList(pullLog.childrenUpdated)}\n`;
             if ((pullLog.attendanceAdded?.length || 0) > 0) finalMessage += `➕ غياب مسجل (${(pullLog.attendanceAdded?.length || 0)}): ${formatDetailedList(pullLog.attendanceAdded)}\n`;
             if ((pullLog.eventsAdded?.length || 0) > 0) finalMessage += `➕ رحلات جديدة (${(pullLog.eventsAdded?.length || 0)}): ${formatDetailedList(pullLog.eventsAdded)}\n`;
             if ((pullLog.eventsUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث رحلات (${(pullLog.eventsUpdated?.length || 0)}): ${formatDetailedList(pullLog.eventsUpdated)}\n`;

@@ -307,7 +307,7 @@ export default function MasterDashboard() {
                                     <span className="font-black text-xl text-white">
                                         {children?.filter(c => allowedOsras.some(o => o.syncKey === c.syncKey)).length || 0}
                                     </span>
-                                    <span className="text-[10px] font-bold text-indigo-100">طفل</span>
+                                    <span className="text-[10px] font-bold text-indigo-100">مخدوم</span>
                                 </div>
                             </div>
 
@@ -341,7 +341,7 @@ export default function MasterDashboard() {
                                         </div>
                                         <div className="flex flex-col items-center justify-center bg-indigo-50 w-12 h-12 rounded-2xl shrink-0 group-hover:bg-amber-50 transition-colors">
                                             <span className="font-black text-indigo-700 group-hover:text-amber-700">{countKids}</span>
-                                            <span className="text-[9px] font-bold text-indigo-400 group-hover:text-amber-500">طفل</span>
+                                            <span className="text-[9px] font-bold text-indigo-400 group-hover:text-amber-500">مخدوم</span>
                                         </div>
                                     </div>
                                 );

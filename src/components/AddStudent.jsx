@@ -32,7 +32,7 @@ const AddChild = () => {
 
     return (
         <div className="p-6 bg-white rounded-3xl shadow-xl space-y-4">
-            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none border focus:border-blue-500" placeholder="اسم الطفل" onChange={e => setFormData({ ...formData, name: e.target.value })} />
+            <input className="w-full p-4 bg-slate-50 rounded-2xl outline-none border focus:border-blue-500" placeholder="اسم المخدوم" onChange={e => setFormData({ ...formData, name: e.target.value })} />
             <input type="tel" className="w-full p-4 bg-slate-50 rounded-2xl outline-none border focus:border-blue-500" placeholder="تليفون المخدوم (اختياري)" onChange={e => setFormData({ ...formData, childPhone: e.target.value })} />
             <button onClick={captureLocation} className="w-full flex items-center justify-center gap-2 bg-green-50 text-green-700 p-4 rounded-2xl border-2 border-dashed border-green-200">
                 <MapPin /> حفظ موقع البيت (GPS)

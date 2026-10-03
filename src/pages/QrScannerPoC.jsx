@@ -284,7 +284,7 @@ export default function QrScannerPoC() {
                                 </div>
                                 <h2 className="text-xl font-black text-white mb-2">جاهز للمسح</h2>
                                 <p className="text-sm text-slate-400 font-bold leading-relaxed mb-8">
-                                    اضغط على الزرار تحت عشان تفتح الكاميرا وتبدأ تمسح بطاقات QR الأبطال
+                                    اضغط على الزرار تحت عشان تفتح الكاميرا وتبدأ تمسح بطاقات QR المخدومين
                                 </p>
                                 <button
                                     onClick={startCamera}
@@ -377,7 +377,7 @@ export default function QrScannerPoC() {
                         <div className="text-center py-12 text-slate-500">
                             <ScanLine size={40} className="mx-auto mb-3 opacity-30" />
                             <p className="font-bold text-sm">مفيش بطاقات تم مسحها لسه</p>
-                            <p className="text-xs mt-1 text-slate-600">افتح الكاميرا وابدأ مسح بطاقات الأبطال</p>
+                            <p className="text-xs mt-1 text-slate-600">افتح الكاميرا وابدأ مسح بطاقات المخدومين</p>
                         </div>
                     ) : (
                         scannedList.map((item, index) => (
@@ -413,7 +413,7 @@ export default function QrScannerPoC() {
                     <div>
                         <p className="text-xs font-black text-amber-300 mb-1">وضع التجربة (PoC)</p>
                         <p className="text-[11px] text-amber-400/70 font-bold leading-relaxed">
-                            دي نسخة تجريبية للكاميرا والمسح. الـ IDs بتتجمع في الذاكرة بس ومش بتتحفظ في قاعدة البيانات. في المرحلة الجاية هنربط كل حاجة بأسماء الأبطال وقاعدة البيانات.
+                            دي نسخة تجريبية للكاميرا والمسح. الـ IDs بتتجمع في الذاكرة بس ومش بتتحفظ في قاعدة البيانات. في المرحلة الجاية هنربط كل حاجة بأسماء المخدومين وقاعدة البيانات.
                         </p>
                     </div>
                 </div>

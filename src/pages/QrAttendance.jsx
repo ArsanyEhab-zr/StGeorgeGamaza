@@ -98,7 +98,7 @@ export default function QrAttendance() {
                 setSaveResult({
                     success: false,
                     count: 0,
-                    message: 'كل الأبطال دول مسجلين حضور بالفعل لليوم ده! مفيش سجلات جديدة.',
+                    message: 'كل المخدومين دول مسجلين حضور بالفعل لليوم ده! مفيش سجلات جديدة.',
                 });
                 setIsSaving(false);
                 return;
@@ -245,7 +245,7 @@ export default function QrAttendance() {
                             </div>
                             <h2 className="text-xl font-black text-white mb-2">تسجيل الحضور بـ QR</h2>
                             <p className="text-sm text-slate-400 font-bold leading-relaxed max-w-xs mx-auto">
-                                اختار نوع الحدث والتاريخ عشان تبدأ مسح بطاقات الأبطال
+                                اختار نوع الحدث والتاريخ عشان تبدأ مسح بطاقات المخدومين
                             </p>
                         </div>
 
@@ -377,7 +377,7 @@ export default function QrAttendance() {
                                         </div>
                                         <h2 className="text-xl font-black text-white mb-2">جاهز للمسح</h2>
                                         <p className="text-sm text-slate-400 font-bold leading-relaxed mb-8">
-                                            اضغط عشان تفتح الكاميرا وتبدأ تمسح بطاقات الأبطال
+                                            اضغط عشان تفتح الكاميرا وتبدأ تمسح بطاقات المخدومين
                                         </p>
                                         <button
                                             onClick={scanner.startCamera}
@@ -512,7 +512,7 @@ export default function QrAttendance() {
                             <div className="flex gap-3">
                                 <div className="flex-1 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 text-center">
                                     <p className="text-2xl font-black text-emerald-400">{scanner.scannedCount}</p>
-                                    <p className="text-[10px] font-black text-emerald-400/60 mt-0.5">بطل تم مسحهم</p>
+                                    <p className="text-[10px] font-black text-emerald-400/60 mt-0.5">مخدوم تم مسحهم</p>
                                 </div>
                                 <div className="flex-1 bg-blue-500/10 border border-blue-500/20 rounded-2xl p-3 text-center">
                                     <p className="text-2xl font-black text-blue-400">
@@ -552,13 +552,13 @@ export default function QrAttendance() {
                         <div className="mt-6">
                             <h3 className="text-sm font-black text-slate-400 mb-3 flex items-center gap-2 px-1">
                                 <CheckCircle2 size={16} className="text-emerald-400" />
-                                قائمة الأبطال المسحوبين ({scanner.scannedCount})
+                                قائمة المخدومين المسحوبين ({scanner.scannedCount})
                             </h3>
 
                             {scanner.scannedCount === 0 ? (
                                 <div className="text-center py-12 text-slate-500">
                                     <ScanLine size={40} className="mx-auto mb-3 opacity-30" />
-                                    <p className="font-bold text-sm">مفيش أبطال تم مسحهم</p>
+                                    <p className="font-bold text-sm">مفيش مخدومين تم مسحهم</p>
                                     <p className="text-xs mt-1 text-slate-600">ارجع للمسح وابدأ امسح بطاقات</p>
                                 </div>
                             ) : (
@@ -612,7 +612,7 @@ export default function QrAttendance() {
                                 ) : (
                                     <>
                                         <Save size={22} />
-                                        حفظ الحضور ({scanner.scannedCount} بطل)
+                                        حفظ الحضور ({scanner.scannedCount} مخدوم)
                                     </>
                                 )}
                             </button>

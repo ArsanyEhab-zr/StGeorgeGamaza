@@ -28,13 +28,13 @@ export default function ChildInfo() {
         return (
             <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-10 font-bold text-slate-500 font-sans" dir="rtl">
                 <AlertTriangle size={40} className="text-red-400 mb-4" />
-                <p>بيانات الطفل غير متوفرة أو المسار غير صحيح.</p>
+                <p>بيانات المخدوم غير متوفرة أو المسار غير صحيح.</p>
                 <button onClick={() => navigate(-1)} className="mt-6 bg-slate-200 px-6 py-2 rounded-xl text-sm hover:bg-slate-300 transition-colors">رجوع</button>
             </div>
         );
     }
 
-    if (!child) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-center p-10 font-bold text-slate-500 animate-pulse font-sans">جاري تحميل بيانات البطل...</div>;
+    if (!child) return <div className="min-h-screen bg-slate-50 flex items-center justify-center text-center p-10 font-bold text-slate-500 animate-pulse font-sans">جاري تحميل بيانات المخدوم...</div>;
 
     const isGirl = child.gender === 'بنت';
     const themeColor = isGirl ? 'pink' : 'blue';
@@ -77,7 +77,7 @@ export default function ChildInfo() {
                 {isBday && (
                     <div className="bg-linear-to-r from-pink-500 via-purple-500 to-yellow-500 p-1 rounded-3xl mb-4 shadow-lg animate-pulse">
                         <div className="bg-white/20 backdrop-blur-sm px-4 py-3 rounded-[1.3rem] flex items-center justify-center gap-2 text-white font-black text-sm">
-                            <PartyPopper size={20} /> كل سنة وأنت طيب! النهارده عيد ميلاد البطل 🎉
+                            <PartyPopper size={20} /> كل سنة وأنت طيب! النهارده عيد ميلاد المخدوم 🎉
                         </div>
                     </div>
                 )}
@@ -103,7 +103,7 @@ export default function ChildInfo() {
                 {/* ─── 📋 بطاقة البيانات الشاملة ─── */}
                 <section className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-200 mb-6">
                     <h3 className="text-lg font-black text-slate-800 mb-5 flex items-center gap-2 border-b border-slate-100 pb-3">
-                        <Info className="text-blue-500" size={20} /> بيانات البطل
+                        <Info className="text-blue-500" size={20} /> بيانات المخدوم
                     </h3>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

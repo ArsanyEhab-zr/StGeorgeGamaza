@@ -187,8 +187,8 @@ export default function Attendance() {
     };
 
     const generateMissedFridayMsg = (child) => {
-        const title = child.gender === 'بنت' ? 'بطلتنا' : 'بطلنا';
-        const namePart = child.name ? child.name.split(' ')[0] : 'يا بطل';
+        const title = child.gender === 'بنت' ? 'مخدومتنا' : 'مخدومنا';
+        const namePart = child.name ? child.name.split(' ')[0] : 'يا مخدوم';
         let msg = `وحشتنا يا ${title} (${namePart})! 🥺💔\nمجتش ليه يوم ${selectedDate}؟ مكانك كان فاضي، مستنيينك في الكنيسة!`;
         const phone = cleanPhoneNumber(getTargetPhone(child));
         return {
@@ -212,7 +212,7 @@ export default function Attendance() {
 
                     <div className="relative mb-4">
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" placeholder="ابحث عن بطل..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pr-10 pl-4 py-2.5 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                        <input type="text" placeholder="ابحث عن مخدوم..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pr-10 pl-4 py-2.5 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
                     </div>
                     <div className="flex gap-2 justify-center">
                         {[{ id: "all", label: "الكل 🌟" }, { id: "boys", label: "ولاد 👦" }, { id: "girls", label: "بنات 👧" }].map(f => (

@@ -69,7 +69,7 @@ function UpdateChecker({ children }) {
             await LocalNotifications.schedule({
               notifications: [{
                 title: "أهلاً بيك في الخدمة! ⛪",
-                body: "نورت الأبلكيشن يا بطل، ربنا يبارك تعب محبتك.",
+                body: "نورت الأبلكيشن يا مخدوم، ربنا يبارك تعب محبتك.",
                 id: 1,
                 schedule: { at: new Date(Date.now() + 3000) },
                 smallIcon: "ic_launcher"
@@ -162,7 +162,7 @@ function UpdateChecker({ children }) {
             تحديث هام جداً! <Rocket className="text-indigo-500" size={24} />
           </h2>
           <p className="text-sm font-bold text-slate-500 mb-8 leading-relaxed">
-            عشان نضمن سرعة الأبلكيشن وأمان بيانات الأبطال، نزلنا تحديث جديد. اضغط تحت للتحميل والتثبيت (التحديث مش هيمسح بياناتك).
+            عشان نضمن سرعة الأبلكيشن وأمان بيانات المخدومين، نزلنا تحديث جديد. اضغط تحت للتحميل والتثبيت (التحديث مش هيمسح بياناتك).
           </p>
           <a
             href={downloadLink}

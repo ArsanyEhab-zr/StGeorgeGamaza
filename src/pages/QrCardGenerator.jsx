@@ -119,7 +119,7 @@ export default function QrCardGenerator() {
                             <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="ابحث عن بطل..."
+                                placeholder="ابحث عن مخدوم..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full pr-10 pl-4 py-2.5 rounded-xl bg-slate-50 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 border border-slate-200"
@@ -177,7 +177,7 @@ export default function QrCardGenerator() {
                         <div className="flex items-center justify-between text-xs font-black text-slate-500 pt-1">
                             <span className="flex items-center gap-1.5">
                                 <Users size={14} className="text-indigo-500" />
-                                {filteredChildren.length} بطل
+                                {filteredChildren.length} مخدوم
                             </span>
                             <span className="flex items-center gap-1.5 text-slate-400">
                                 <Printer size={12} />
@@ -216,8 +216,8 @@ export default function QrCardGenerator() {
                         {filteredChildren.length === 0 && (
                             <div className="text-center py-16 text-slate-400">
                                 <QrCode size={48} className="mx-auto mb-3 opacity-20" />
-                                <p className="font-bold text-sm">مفيش أبطال</p>
-                                <p className="text-xs mt-1">تأكد من تسجيل الدخول وجود بيانات أبطال</p>
+                                <p className="font-bold text-sm">مفيش مخدومين</p>
+                                <p className="text-xs mt-1">تأكد من تسجيل الدخول وجود بيانات مخدومين</p>
                             </div>
                         )}
                     </div>

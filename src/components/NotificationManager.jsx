@@ -73,7 +73,7 @@ export default function NotificationManager() {
                         if (bMonth === currentMonth && bDay === currentDay) {
                             notificationsToSchedule.push({
                                 title: '🎉 عيد ميلاد النهاردة!',
-                                body: `النهاردة عيد ميلاد البطل [${child.name}]، ادخل هنيه!`,
+                                body: `النهاردة عيد ميلاد المخدوم [${child.name}]، ادخل هنيه!`,
                                 id: idCounter++,
                                 schedule: { at: new Date(Date.now() + 5000) },
                                 smallIcon: 'ic_launcher'
@@ -81,7 +81,7 @@ export default function NotificationManager() {
                         } else if (bMonth === nextMonth && bDay === nextDay) {
                             notificationsToSchedule.push({
                                 title: '🎉 عيد ميلاد بكرة!',
-                                body: `بكرة عيد ميلاد البطل [${child.name}]، جهز له الهدية!`,
+                                body: `بكرة عيد ميلاد المخدوم [${child.name}]، جهز له الهدية!`,
                                 id: idCounter++,
                                 schedule: { at: new Date(Date.now() + 7000) },
                                 smallIcon: 'ic_launcher'

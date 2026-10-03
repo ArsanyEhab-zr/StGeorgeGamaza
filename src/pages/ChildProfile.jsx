@@ -46,10 +46,10 @@ const ChildProfile = () => {
         setIsInterventionRequired(false);
         
         triggerAutoSync();
-        alert('تم حفظ تقرير الافتقاد في ملف البطل بنجاح! ✅');
+        alert('تم حفظ تقرير الافتقاد في ملف المخدوم بنجاح! ✅');
     };
 
-    if (!child) return <div className="text-center p-10 font-bold text-slate-500 animate-pulse">جاري تحميل ملف البطل...</div>;
+    if (!child) return <div className="text-center p-10 font-bold text-slate-500 animate-pulse">جاري تحميل ملف المخدوم...</div>;
 
     const isGirl = child.gender === 'بنت';
     const themeBg = isGirl ? 'bg-pink-100' : 'bg-blue-100';
@@ -118,7 +118,7 @@ const ChildProfile = () => {
                                         </label>
                                     </div>
                                     <button onClick={saveNote} className="w-full bg-green-500 text-white py-3 rounded-2xl font-black flex justify-center items-center gap-2 hover:bg-green-600 active:scale-95 transition-all shadow-lg">
-                                        <Save size={18} /> حفظ التقرير في ملف البطل
+                                        <Save size={18} /> حفظ التقرير في ملف المخدوم
                                     </button>
                                 </div>
                         </div>
@@ -151,7 +151,7 @@ const ChildProfile = () => {
                         </div>
                     ) : (
                         <div className="text-center py-8 bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
-                            <p className="text-sm font-bold text-slate-400">مفيش أي تقارير افتقاد متسجلة للبطل ده لسه.</p>
+                            <p className="text-sm font-bold text-slate-400">مفيش أي تقارير افتقاد متسجلة للمخدوم ده لسه.</p>
                         </div>
                     )}
                 </section>

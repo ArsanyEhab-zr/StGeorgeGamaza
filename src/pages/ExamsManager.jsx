@@ -274,7 +274,7 @@ export default function ExamsManager() {
                         <h1 className="text-lg font-black text-slate-800 flex items-center gap-2">
                             <Award className="text-amber-500" size={24} /> رصد الامتحانات
                         </h1>
-                        <p className="text-xs font-bold text-slate-500">تقييم الأبطال في الحفظ والألحان</p>
+                        <p className="text-xs font-bold text-slate-500">تقييم المخدومين في الحفظ والألحان</p>
                     </div>
                 </div>
             </header>
@@ -368,7 +368,7 @@ export default function ExamsManager() {
                             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input 
                                 type="text" 
-                                placeholder="ابحث عن بطل..." 
+                                placeholder="ابحث عن مخدوم..." 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full pr-12 pl-4 py-3 rounded-2xl bg-white border border-slate-200 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-sm"
@@ -395,7 +395,7 @@ export default function ExamsManager() {
                             ))}
                             {filteredChildren.length === 0 && (
                                 <div className="text-center py-8 text-slate-400 font-bold bg-white rounded-3xl border border-slate-100">
-                                    لا يوجد أبطال مطابقين للبحث.
+                                    لا يوجد مخدومين مطابقين للبحث.
                                 </div>
                             )}
                         </div>
