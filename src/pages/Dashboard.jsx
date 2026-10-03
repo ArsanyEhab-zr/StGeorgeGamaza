@@ -348,15 +348,20 @@ function StatsView({ childrenData, appSettings }) {
         XLSX.writeFile(workbook, `${fileName}_${today}.xlsx`);
     };
 
+    const currentSyncKey = localStorage.getItem('currentSyncKey');
+    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
+    const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
+    const className = currentServantObj.stageName || currentServantObj.serviceName || currentServantObj.osraName || appSettings.khedmaName || 'هذا الفصل';
+
     const handleGlobalReset = async () => {
-        if (window.confirm("⚠️ تحذير خطير: إنت على وشك تصفير كل المواظبة، الغياب، والافتقاد لبداية شهر جديد! متأكد؟")) {
+        if (window.confirm(`هل أنت متأكد من تصفير/مسح بيانات فصل ${className} فقط؟ لن تؤثر هذه العملية على بقية الفصول.`)) {
             if (window.confirm("تأكيد أخير: الداتا هتتمسح ومش هترجع، كمل؟")) {
                 try {
                     const now = new Date().toISOString();
                     const updates = childrenData.map(c => db.children.update(c.id, { streak: 0, last_liturgy: null, last_service: null, last_visited: null, isDirty: true, updatedAt: now }));
                     await Promise.all(updates);
                     triggerAutoSync();
-                    alert("تم تصفير العدادات بنجاح لبداية شهر جديد! 🚀");
+                    alert(`تم تصفير العدادات بنجاح لفصل ${className}! 🚀`);
                 } catch (error) {
                     console.error(error);
                     alert("عطل في قاعدة البيانات: " + error.message);
@@ -366,21 +371,24 @@ function StatsView({ childrenData, appSettings }) {
     };
 
     const handleNuclearDelete = async () => {
-        if (window.confirm("⚠️ تحذير نهائي وقاتل: إنت بتمسح كل المخدومين وكل الغياب من الموبايل نهائياً! هل إنت متأكد؟")) {
+        if (window.confirm(`هل أنت متأكد من تصفير/مسح بيانات فصل ${className} فقط؟ لن تؤثر هذه العملية على بقية الفصول.`)) {
             const pass = prompt(`اكتب كلمة (${appSettings.deletePass}) للتأكيد النهائي:`);
             if (pass === appSettings.deletePass) {
                 try {
                     const now = new Date().toISOString();
-                    // 🪦 Soft-delete all children
-                    const allKids = await db.children.toArray();
-                    await Promise.all(allKids.map(c => db.children.update(c.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                    // 🪦 Soft-delete scoped children
+                    const updates = childrenData.map(c => db.children.update(c.id, { isDeleted: true, isDirty: true, updatedAt: now }));
+                    await Promise.all(updates);
                     
-                    // 🪦 Soft-delete all attendance
+                    // 🪦 Soft-delete scoped attendance
+                    const childIds = childrenData.map(c => c.id);
                     const allAtt = await db.attendance.toArray();
-                    await Promise.all(allAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                    const scopedAtt = allAtt.filter(a => childIds.includes(a.childId));
+                    const attUpdates = scopedAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now }));
+                    await Promise.all(attUpdates);
                     
                     triggerAutoSync();
-                    alert("تم تنظيف قاعدة البيانات بالكامل! الأرض فاضية وجاهزة للداتا الجديدة. 🧹");
+                    alert(`تم تنظيف قاعدة بيانات ${className} بالكامل! الأرض فاضية. 🧹`);
                 } catch (error) {
                     console.error(error);
                     alert("عطل في قاعدة البيانات: " + error.message);
@@ -502,22 +510,24 @@ function StatsView({ childrenData, appSettings }) {
             </div>
 
             {/* ⚠️ 5. منطقة الخطر (التنظيف) */}
-            <div className="bg-red-50 p-6 rounded-3xl border border-red-100 mt-10">
-                <h3 className="text-sm font-black text-red-800 mb-1 flex items-center gap-2">
-                    <AlertTriangle className="text-red-500" size={16} /> منطقة تنظيف البيانات (للمسئول)
-                </h3>
-                <p className="text-[10px] font-bold text-red-600/80 mb-4">احذر: استخدام هذه الأزرار سيؤدي لمسح البيانات من جهازك.</p>
+            {!isMaster && (
+                <div className="bg-red-50 p-6 rounded-3xl border border-red-100 mt-10">
+                    <h3 className="text-sm font-black text-red-800 mb-1 flex items-center gap-2">
+                        <AlertTriangle className="text-red-500" size={16} /> منطقة تنظيف البيانات للفصل
+                    </h3>
+                    <p className="text-[10px] font-bold text-red-600/80 mb-4">احذر: استخدام هذه الأزرار سيؤدي لمسح البيانات من جهازك.</p>
 
-                <div className="flex flex-col gap-2">
-                    <button onClick={handleGlobalReset} className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-sm">
-                        <RefreshCw size={16} /> تصفير العدادات (لبداية شهر جديد)
-                    </button>
+                    <div className="flex flex-col gap-2">
+                        <button onClick={handleGlobalReset} className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-sm">
+                            <RefreshCw size={16} /> تصفير العدادات للفصل (لبداية شهر جديد)
+                        </button>
 
-                    <button onClick={handleNuclearDelete} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-xs hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-sm">
-                        <Trash2 size={16} /> مسح كل المخدومين والغياب (Clean Slate)
-                    </button>
+                        <button onClick={handleNuclearDelete} className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-xs hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-sm">
+                            <Trash2 size={16} /> مسح المخدومين والغياب للفصل
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 }

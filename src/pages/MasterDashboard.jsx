@@ -4,14 +4,16 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 // 🌟 استدعاء فايربيز عشان زرار المزامنة
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
-import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3 } from 'lucide-react';
 import ExcelExporter from '../components/ExcelExporter';
+import useAutoSync from '../hooks/useAutoSync';
 import { TENANT_CONFIG } from '../config/tenantConfig';
 
 export default function MasterDashboard() {
     const navigate = useNavigate();
+    const { triggerAutoSync } = useAutoSync();
 
     // 🔐 جلب الهوية الأساسية للخادم
     const currentSyncKey = localStorage.getItem('currentSyncKey');
@@ -40,6 +42,49 @@ export default function MasterDashboard() {
 
     // 🌟 المتغير الجديد للتبديل بين الأطفال والخدام 🌟
     const [viewMode, setViewMode] = useState(sessionStorage.getItem('master_viewMode') || 'KIDS'); // 'KIDS' | 'SERVANTS'
+
+    // 🌟 متابعة أنشطة الخدمة
+    const [activities, setActivities] = useState({ targeted: [], executed: [] });
+    const [newActivity, setNewActivity] = useState('');
+    const [newActivityType, setNewActivityType] = useState('targeted');
+
+    useEffect(() => {
+        if (!hasAccess) return;
+        const activitiesRef = doc(firestore, 'System', 'serviceActivities');
+        const unsubscribe = onSnapshot(activitiesRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setActivities(docSnap.data());
+            } else {
+                setActivities({ targeted: [], executed: [] });
+            }
+        });
+        return () => unsubscribe();
+    }, [hasAccess]);
+
+    const handleAddActivity = async () => {
+        if (!newActivity.trim()) return;
+        const newAct = { id: Date.now().toString(), text: newActivity.trim() };
+        const updated = { ...activities };
+        updated[newActivityType] = [...(updated[newActivityType] || []), newAct];
+        await setDoc(doc(firestore, 'System', 'serviceActivities'), updated);
+        setNewActivity('');
+    };
+
+    const handleDeleteActivity = async (id, type) => {
+        if (!window.confirm("متأكد من مسح هذا النشاط؟")) return;
+        const updated = { ...activities };
+        updated[type] = (updated[type] || []).filter(a => a.id !== id);
+        await setDoc(doc(firestore, 'System', 'serviceActivities'), updated);
+    };
+
+    const handleMoveToExecuted = async (id) => {
+        const item = (activities.targeted || []).find(a => a.id === id);
+        if (!item) return;
+        const updated = { ...activities };
+        updated.targeted = updated.targeted.filter(a => a.id !== id);
+        updated.executed = [...(updated.executed || []), item];
+        await setDoc(doc(firestore, 'System', 'serviceActivities'), updated);
+    };
 
     useEffect(() => {
         if (selectedOsraKey) sessionStorage.setItem('master_osraKey', selectedOsraKey);
@@ -487,6 +532,193 @@ export default function MasterDashboard() {
                                     })
                                 )
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 🎯 متابعة أنشطة الخدمة */}
+                {isSuperAdmin && (
+                    <div className="mt-8 pt-6">
+                        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
+                            <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                                <Target className="text-indigo-500" size={24} /> متابعة أنشطة الخدمة
+                            </h3>
+
+                            <div className="flex gap-2 mb-6">
+                                <select 
+                                    value={newActivityType} 
+                                    onChange={(e) => setNewActivityType(e.target.value)}
+                                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                                >
+                                    <option value="targeted">مستهدف</option>
+                                    <option value="executed">منفذ</option>
+                                </select>
+                                <input 
+                                    type="text" 
+                                    placeholder="أضف نشاطاً جديداً..." 
+                                    value={newActivity} 
+                                    onChange={(e) => setNewActivity(e.target.value)}
+                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
+                                />
+                                <button 
+                                    onClick={handleAddActivity}
+                                    className="bg-indigo-600 text-white px-6 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center"
+                                >
+                                    <Plus size={20} />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Targeted */}
+                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                    <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                                        <Target size={18} className="text-blue-500" /> الأنشطة المستهدفة في الخدمة
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {(activities.targeted || []).length === 0 ? (
+                                            <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة مستهدفة.</p>
+                                        ) : (
+                                            (activities.targeted || []).map(act => (
+                                                <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between gap-3 group">
+                                                    <p className="text-sm font-bold text-slate-700 flex-1">{act.text}</p>
+                                                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => handleMoveToExecuted(act.id)} className="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100" title="نقل إلى المنفذ">
+                                                            <CheckSquare size={16} />
+                                                        </button>
+                                                        <button onClick={() => {
+                                                            const newText = prompt("تعديل النشاط:", act.text);
+                                                            if (newText && newText.trim()) {
+                                                                const updated = { ...activities };
+                                                                const idx = updated.targeted.findIndex(a => a.id === act.id);
+                                                                if (idx > -1) updated.targeted[idx].text = newText.trim();
+                                                                setDoc(doc(firestore, 'System', 'serviceActivities'), updated);
+                                                            }
+                                                        }} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100">
+                                                            <Edit3 size={14} />
+                                                        </button>
+                                                        <button onClick={() => handleDeleteActivity(act.id, 'targeted')} className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Executed */}
+                                <div className="bg-green-50/30 p-4 rounded-2xl border border-green-100">
+                                    <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                                        <CheckCircle size={18} className="text-green-500" /> الأنشطة المنفذة
+                                    </h4>
+                                    <div className="space-y-3">
+                                        {(activities.executed || []).length === 0 ? (
+                                            <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة منفذة.</p>
+                                        ) : (
+                                            (activities.executed || []).map(act => (
+                                                <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-green-200 flex items-center justify-between gap-3 group">
+                                                    <div className="flex items-center gap-2 flex-1">
+                                                        <CheckCircle size={20} className="text-green-600 shrink-0" />
+                                                        <p className="text-sm font-bold text-slate-800">{act.text}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => {
+                                                            const newText = prompt("تعديل النشاط:", act.text);
+                                                            if (newText && newText.trim()) {
+                                                                const updated = { ...activities };
+                                                                const idx = updated.executed.findIndex(a => a.id === act.id);
+                                                                if (idx > -1) updated.executed[idx].text = newText.trim();
+                                                                setDoc(doc(firestore, 'System', 'serviceActivities'), updated);
+                                                            }
+                                                        }} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100">
+                                                            <Edit3 size={14} />
+                                                        </button>
+                                                        <button onClick={() => handleDeleteActivity(act.id, 'executed')} className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100">
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* ⚠️ منطقة الخطر للإدارة المركزية (Global Wipe) */}
+                {isSuperAdmin && (
+                    <div className="mt-8 pt-6">
+                        <div className="bg-red-50 border border-red-200 p-6 rounded-3xl text-center">
+                            <h3 className="text-sm font-black text-red-800 mb-2 flex items-center justify-center gap-2">
+                                <AlertTriangle className="text-red-500" size={18} /> منطقة الخطر (Danger Zone - Global Wipe)
+                            </h3>
+                            <p className="text-[10px] font-bold text-red-600/80 mb-4">احذر: هذا القسم يمسح بيانات جميع الفصول على مستوى الكنيسة.</p>
+                            
+                            <div className="flex flex-col gap-3">
+                                <button 
+                                    onClick={async () => {
+                                        if (selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH') {
+                                            alert("تنبيه: لا يمكن مسح جميع الفصول أثناء تفعيل فلتر لأسرة معينة. قم بإلغاء الفلتر أولاً.");
+                                            return;
+                                        }
+                                        if (window.confirm("⚠️ تحذير شديد: هل أنت متأكد من تصفير العدادات لجميع الفصول بالكامل؟")) {
+                                            if (window.confirm("تأكيد أخير: الداتا هتتصفر لجميع الفصول ومش هترجع، كمل؟")) {
+                                                try {
+                                                    const now = new Date().toISOString();
+                                                    const allKids = await db.children.toArray();
+                                                    const updates = allKids.map(c => db.children.update(c.id, { streak: 0, last_liturgy: null, last_service: null, last_visited: null, isDirty: true, updatedAt: now }));
+                                                    await Promise.all(updates);
+                                                    triggerAutoSync();
+                                                    alert("تم تصفير العدادات بنجاح لجميع الفصول! 🚀");
+                                                } catch (error) {
+                                                    console.error(error);
+                                                    alert("عطل في قاعدة البيانات: " + error.message);
+                                                }
+                                            }
+                                        }
+                                    }} 
+                                    className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm ${selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
+                                >
+                                    <RefreshCw size={16} /> تصفير العدادات لجميع الفصول (Global Reset)
+                                </button>
+                                
+                                <button 
+                                    onClick={async () => {
+                                        if (selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH') {
+                                            alert("تنبيه: لا يمكن مسح جميع الفصول أثناء تفعيل فلتر لأسرة معينة. قم بإلغاء الفلتر أولاً.");
+                                            return;
+                                        }
+                                        if (window.confirm("⚠️ تحذير شديد: هل أنت متأكد من مسح جميع بيانات الخدمة لجميع الفصول بالكامل؟")) {
+                                            const confirmPass = appSettings.deletePass || 'مسح';
+                                            const pass = prompt(`اكتب كلمة (${confirmPass}) للتأكيد النهائي:`);
+                                            if (pass === confirmPass) {
+                                                try {
+                                                    const now = new Date().toISOString();
+                                                    const allKids = await db.children.toArray();
+                                                    await Promise.all(allKids.map(c => db.children.update(c.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                                                    
+                                                    const allAtt = await db.attendance.toArray();
+                                                    await Promise.all(allAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                                                    
+                                                    triggerAutoSync();
+                                                    alert("تم مسح البيانات بالكامل لجميع الفصول! الأرض فاضية. 🧹");
+                                                } catch (error) {
+                                                    console.error(error);
+                                                    alert("عطل في قاعدة البيانات: " + error.message);
+                                                }
+                                            } else {
+                                                alert("تم إلغاء العملية، كلمة المرور خاطئة.");
+                                            }
+                                        }
+                                    }} 
+                                    className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm border ${selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed' : 'bg-white text-red-600 border-red-100 hover:bg-red-50'}`}
+                                >
+                                    <Trash2 size={16} /> مسح المخدومين والغياب لجميع الفصول (Clean Slate)
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

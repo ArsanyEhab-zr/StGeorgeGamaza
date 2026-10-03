@@ -5,7 +5,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import SmartAlerts from '../components/SmartAlerts';
-import { Settings, Users, MapPin, Gift, BookOpen, CalendarDays, Church, UserMinus, UserCheck, X, MessageCircleWarning, FileText, Crown, ArrowRight, Bell, Star, PhoneCall, Award, ChevronRight, QrCode, CreditCard } from 'lucide-react';
+import { Settings, Users, MapPin, Gift, BookOpen, CalendarDays, Church, UserMinus, UserCheck, X, MessageCircleWarning, FileText, Crown, ArrowRight, Bell, Star, PhoneCall, Award, ChevronRight, QrCode, CreditCard, Target, CheckCircle } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { firestore } from '../db/firebase';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Network } from '@capacitor/network';
 import { calculateExactAge } from '../utils/dateUtils';
@@ -18,6 +20,19 @@ export default function Home() {
     const [modalState, setModalState] = useState({ isOpen: false, type: null });
     const [showPastDatePicker, setShowPastDatePicker] = useState(false);
     const [pastDate, setPastDate] = useState('');
+    const [activities, setActivities] = useState({ targeted: [], executed: [] });
+
+    useEffect(() => {
+        const activitiesRef = doc(firestore, 'System', 'serviceActivities');
+        const unsubscribe = onSnapshot(activitiesRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setActivities(docSnap.data());
+            } else {
+                setActivities({ targeted: [], executed: [] });
+            }
+        });
+        return () => unsubscribe();
+    }, []);
     const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
 
     // 🌟 جلب بيانات الخادم من التخزين المحلي
@@ -145,20 +160,20 @@ export default function Home() {
 
     const widgetData = useMemo(() => {
         if (!children || isLeadership) return { birthdays: [], topStreaks: [], needsVisitation: [] };
-        
+
         const now = new Date();
         const currentMonth = now.getMonth() + 1;
-        
+
         const birthdays = children.filter(c => c.birthMonth === currentMonth).map(c => {
             const age = calculateExactAge(c.birthDate);
             return { ...c, calculatedAge: age === 'غير محدد' ? '' : `${age} سنة` };
         });
-        
+
         const topStreaks = [...children]
             .sort((a, b) => (b.streak || 0) - (a.streak || 0))
             .filter(c => (c.streak || 0) > 0)
             .slice(0, 15);
-            
+
         const needsVisitation = children.filter(c => {
             if (!c.last_service && !c.last_liturgy) return true;
             const lastAttended = new Date(Math.max(
@@ -183,7 +198,7 @@ export default function Home() {
                         const hasUnsyncedNotes = Object.keys(localStorage).some(key => key.startsWith('draft_note_'));
                         const dirtyChildren = await db.children.filter(c => c.isDirty === true || c.synced === 0).count();
                         const dirtyAttendance = await db.attendance.filter(a => a.isDirty === true || a.synced === 0).count();
-                        
+
                         if (hasUnsyncedNotes || dirtyChildren > 0 || dirtyAttendance > 0) {
                             await LocalNotifications.schedule({
                                 notifications: [
@@ -252,7 +267,7 @@ export default function Home() {
         const title = child.gender === 'بنت' ? 'مخدومتنا' : 'مخدومنا';
         const namePart = child.name ? child.name.split(' ')[0] : '';
         let msg = `وحشتنا يا ${title} ${namePart ? `(${namePart})` : ''}! 🥺💔\nمجتش ليه الجمعة اللي فاتت؟ مكانك كان فاضي، مستنيينك الجمعة الجاية ضروري!`;
-        
+
         let phoneStr = '';
         if (specificTarget === 'father' && child.fatherPhone) phoneStr = child.fatherPhone;
         else if (specificTarget === 'mother' && child.motherPhone) phoneStr = child.motherPhone;
@@ -287,7 +302,7 @@ export default function Home() {
         localStorage.setItem('isSuperAdminImpersonating', 'true');
         window.location.reload();
     };
- 
+
     const handleCurriculumClick = () => {
         if (curriculumPdfUrl) {
             navigate('/pdf-viewer', { state: { pdfUrl: curriculumPdfUrl } });
@@ -415,7 +430,7 @@ export default function Home() {
                                                 <h3 className="text-white font-black text-lg">{osra.name}</h3>
                                             </div>
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => handleEnterOsra(osra)}
                                             className="w-full bg-amber-500 hover:bg-amber-400 text-indigo-950 py-3 rounded-2xl text-sm font-black shadow-md transition-colors flex items-center justify-center gap-2"
                                         >
@@ -446,9 +461,6 @@ export default function Home() {
                             </Link>
 
                             <div className="w-full pt-4 border-t border-slate-100 grid grid-cols-1 gap-2 mt-auto">
-                                <Link to="/tracking-dashboards" className="bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-xl text-xs font-black shadow-md transition-all flex items-center justify-center gap-1.5 w-full mb-2">
-                                    <BookOpen size={14} /> لوحة المتابعة والتقارير
-                                </Link>
                                 <button onClick={() => setModalState({ isOpen: true, type: 'absent' })} className="bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-black shadow-md transition-all flex items-center justify-center gap-1.5 w-full">
                                     <UserMinus size={14} /> مين غاب؟
                                 </button>
@@ -475,7 +487,7 @@ export default function Home() {
                                     <h2 className="text-lg font-black text-indigo-900">أعياد الميلاد</h2>
                                 </div>
                             </div>
-                            
+
                             <div className="flex flex-col gap-3 flex-1 overflow-y-auto max-h-40 pr-1 mb-4">
                                 {widgetData?.birthdays?.length > 0 ? widgetData.birthdays.map(c => (
                                     <div key={c.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl">
@@ -567,9 +579,9 @@ export default function Home() {
                                 <p className="text-xs text-slate-500 font-bold">رصد وتقييم أداء المخدومين</p>
                             </div>
                         </Link>
-                        
-                        <div 
-                            onClick={handleCurriculumClick} 
+
+                        <div
+                            onClick={handleCurriculumClick}
                             className="bg-white p-5 rounded-2xl shadow-md border border-slate-100 flex items-center gap-4 hover:bg-slate-50 transition-all duration-300 cursor-pointer"
                         >
                             <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center">
@@ -607,6 +619,55 @@ export default function Home() {
                         </Link>
                     </div>
                 )}
+
+                {/* 🎯 متابعة أنشطة الخدمة (Read-Only) */}
+                {!isMaster && (
+                    <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 mb-8">
+                        <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                            <Target className="text-indigo-500" size={24} /> متابعة أنشطة الخدمة
+                        </h3>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Targeted */}
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                                    <Target size={18} className="text-blue-500" /> مستهدف
+                                </h4>
+                                <div className="space-y-3">
+                                    {(activities.targeted || []).length === 0 ? (
+                                        <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة مستهدفة.</p>
+                                    ) : (
+                                        (activities.targeted || []).map(act => (
+                                            <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-200">
+                                                <p className="text-sm font-bold text-slate-700">{act.text}</p>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Executed */}
+                            <div className="bg-green-50/30 p-4 rounded-2xl border border-green-100">
+                                <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                                    <CheckCircle size={18} className="text-green-500" /> تم تنفيذه
+                                </h4>
+                                <div className="space-y-3">
+                                    {(activities.executed || []).length === 0 ? (
+                                        <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة منفذة.</p>
+                                    ) : (
+                                        (activities.executed || []).map(act => (
+                                            <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-green-200 flex items-center gap-2">
+                                                <CheckCircle size={20} className="text-green-600 shrink-0" />
+                                                <p className="text-sm font-bold text-slate-800">{act.text}</p>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </main>
 
             {/* المودال بتاع تقرير الغياب السريع */}
