@@ -8,8 +8,6 @@ export default function BottomNav() {
     const currentPath = location.pathname;
     const { status, dirtyCount, label } = useSyncStatus();
 
-    const isFriday = new Date().getDay() === 5;
-
     // 🌟 تحديد إذا كان اللي فاتح هو أبونا / أدمن
     const currentSyncKey = localStorage.getItem('currentSyncKey');
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
@@ -33,11 +31,6 @@ export default function BottomNav() {
     if (isMaster) {
         // 👑 لو أبونا: نخفي الغياب والافتقاد والجوائز، ونسيب "الدليل" بس
         navItems = allNavItems.filter(item => item.path === '/info-directory');
-    } else {
-        // 👨‍🏫 لو خادم عادي: لو مش يوم جمعة، نشيل تابة الغياب بس
-        if (!isFriday) {
-            navItems = navItems.filter(item => item.path !== '/attendance');
-        }
     }
 
     // 🚦 3-state sync indicator config

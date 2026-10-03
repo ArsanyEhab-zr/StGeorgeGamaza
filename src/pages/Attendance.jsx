@@ -22,24 +22,15 @@ export default function Attendance() {
     React.useEffect(() => sessionStorage.setItem('attendance_filter', activeFilter), [activeFilter]);
     React.useEffect(() => sessionStorage.setItem('attendance_search', searchQuery), [searchQuery]);
 
-    const isFriday = (dateStr) => {
-        if (!dateStr) return false;
-        const d = new Date(dateStr);
-        return !isNaN(d.getTime()) && d.getDay() === 5;
-    };
-
     const targetDate = useMemo(() => {
         const d = new Date();
-        const day = d.getDay();
-        const diff = day >= 5 ? day - 5 : day + 2;
-        d.setDate(d.getDate() - diff);
         return d.toISOString().split('T')[0];
     }, []);
 
     const [selectedDate, setSelectedDate] = useState(() => {
-        if (passedDate && isFriday(passedDate)) return passedDate;
+        if (passedDate) return passedDate;
         const saved = sessionStorage.getItem('attendance_date');
-        if (saved && isFriday(saved)) return saved;
+        if (saved) return saved;
         return targetDate;
     });
     
@@ -49,11 +40,7 @@ export default function Attendance() {
     const handleDateChange = (e) => {
         const val = e.target.value;
         if (!val) return;
-        if (isFriday(val)) {
-            setSelectedDate(val);
-        } else {
-            alert("تنبيه: الغياب يقتصر على أيام الجمعة فقط ⛪");
-        }
+        setSelectedDate(val);
     };
 
     const handlePreviousFriday = () => {
@@ -197,16 +184,35 @@ export default function Attendance() {
         };
     };
 
+    const getArabicDateText = (dateString) => {
+        try {
+            const d = new Date(dateString);
+            const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+            const dayName = days[d.getDay()];
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dayName}، ${dd}/${mm}/${yyyy}`;
+        } catch(e) {
+            return dateString;
+        }
+    };
+
     return (
         <div className="min-h-screen bg-slate-50 pb-32 font-sans" dir="rtl">
             <header className="bg-white/80 backdrop-blur-md p-4 shadow-sm mb-6 rounded-b-4xl">
                 <div className="max-w-4xl mx-auto">
+                    {/* Date Warning Banner */}
+                    <div className="mb-4 bg-amber-100 border-l-4 border-r-4 border-amber-500 text-amber-900 p-4 rounded-xl shadow-md font-black text-sm flex items-center justify-center text-center">
+                        ⚠️ يتم الآن تسجيل الحضور لتاريخ: {getArabicDateText(selectedDate)}
+                    </div>
+
                     {/* Date Picker UI Wrapper */}
                     <div className="flex items-center gap-2 mb-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
                         <Calendar className="text-blue-500 w-5 h-5 mr-2" />
                         <input type="date" value={selectedDate} onChange={handleDateChange} className="flex-1 bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-xl outline-none border border-slate-200 focus:border-blue-400 focus:bg-white transition-all text-sm" />
                         <button onClick={handlePreviousFriday} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black hover:bg-blue-100 transition-all shrink-0 border border-blue-100">
-                            الجمعة الماضية
+                            الأسبوع الماضي
                         </button>
                     </div>
 

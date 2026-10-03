@@ -25,19 +25,30 @@ export default function ServantsFollowUp() {
         }
     };
 
-    const getServiceFriday = (date = new Date()) => {
+    const getArabicDateText = (dateString) => {
+        try {
+            const d = new Date(dateString);
+            const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+            const dayName = days[d.getDay()];
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const yyyy = d.getFullYear();
+            return `${dayName}، ${dd}/${mm}/${yyyy}`;
+        } catch(e) {
+            return dateString;
+        }
+    };
+
+    const getSelectedDate = (date = new Date()) => {
         const d = new Date(date);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 6 ? -1 : 5);
-        d.setDate(diff);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
 
-    const [weekDate, setWeekDate] = useState(() => getServiceFriday());
+    const [weekDate, setWeekDate] = useState(() => getSelectedDate());
 
     const handleDateChange = (val) => {
         if (!val) return;
-        setWeekDate(getServiceFriday(val));
+        setWeekDate(getSelectedDate(val));
     };
 
     const [servantsData, setServantsData] = useState([]);
@@ -185,6 +196,10 @@ export default function ServantsFollowUp() {
                                 className="w-full pl-4 pr-12 py-3 bg-slate-900 border border-slate-700 rounded-xl font-bold text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none text-white placeholder-slate-500 transition-all"
                             />
                         </div>
+                    </div>
+
+                    <div className="mb-6 bg-amber-500/10 border-l-4 border-r-4 border-amber-500 text-amber-300 p-4 rounded-xl shadow-md font-black text-sm flex items-center justify-center text-center">
+                        ⚠️ يتم الآن تسجيل الحضور لتاريخ: {getArabicDateText(weekDate)}
                     </div>
 
                     <div className="overflow-x-auto rounded-2xl border border-slate-700 bg-slate-900/50 hidden md:block">

@@ -9,17 +9,9 @@ export default function ServantSelfCheckIn() {
     const [isSaving, setIsSaving] = useState(false);
     const [showSuccess, setShowSuccess] = useState(false);
     
-    // Helper to get current week's Friday date as a string "YYYY-MM-DD"
-    const getLocalYYYYMMDD = (d) => {
+    // Helper to get current date as a string "YYYY-MM-DD"
+    const getLocalYYYYMMDD = (d = new Date()) => {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    };
-
-    const getServiceFriday = (date = new Date()) => {
-        const d = new Date(date);
-        const day = d.getDay();
-        const diff = d.getDate() - day + (day === 6 ? -1 : 5); // get Friday
-        d.setDate(diff);
-        return getLocalYYYYMMDD(d);
     };
     
     const today = new Date();
@@ -28,7 +20,7 @@ export default function ServantSelfCheckIn() {
     // Read current logged in servant
     const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{"name":"مينا مجدي"}');
 
-    const weekDate = getServiceFriday();
+    const weekDate = getLocalYYYYMMDD();
     const [year, month, dayStr] = weekDate.split('-');
     const displayDate = `${dayStr}/${month}/${year}`;
     const monthYear = todayMonth; // Ensure month reflects the actual check-in month

@@ -34,12 +34,8 @@ export default function Home() {
 
     const [activeWidget, setActiveWidget] = useState(localStorage.getItem('preferredWidget') || 'BIRTHDAYS');
 
-    const isFriday = new Date().getDay() === 5;
     const targetDate = useMemo(() => {
         const d = new Date();
-        const day = d.getDay();
-        const diff = day >= 5 ? day - 5 : day + 2;
-        d.setDate(d.getDate() - diff);
         return d.toISOString().split('T')[0];
     }, []);
 
