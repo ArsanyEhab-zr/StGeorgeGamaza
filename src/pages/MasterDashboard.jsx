@@ -539,16 +539,16 @@ export default function MasterDashboard() {
                 {/* 🎯 متابعة أنشطة الخدمة */}
                 {isSuperAdmin && (
                     <div className="mt-8 pt-6">
-                        <div className="bg-white border border-slate-200 p-6 rounded-3xl shadow-sm">
+                        <div className="bg-white border border-slate-200 p-4 sm:p-6 rounded-3xl shadow-sm overflow-hidden">
                             <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
                                 <Target className="text-indigo-500" size={24} /> متابعة أنشطة الخدمة
                             </h3>
 
-                            <div className="flex gap-2 mb-6">
+                            <div className="flex flex-col sm:flex-row gap-2 mb-6">
                                 <select 
                                     value={newActivityType} 
                                     onChange={(e) => setNewActivityType(e.target.value)}
-                                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                                    className="w-full sm:w-auto shrink-0 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none"
                                 >
                                     <option value="targeted">مستهدف</option>
                                     <option value="executed">منفذ</option>
@@ -558,14 +558,14 @@ export default function MasterDashboard() {
                                     placeholder="أضف نشاطاً جديداً..." 
                                     value={newActivity} 
                                     onChange={(e) => setNewActivity(e.target.value)}
-                                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
+                                    className="w-full min-w-0 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
                                 />
                                 <button 
                                     onClick={handleAddActivity}
-                                    className="bg-indigo-600 text-white px-6 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center"
+                                    className="w-full sm:w-auto shrink-0 bg-indigo-600 text-white px-6 py-3 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
                                 >
-                                    <Plus size={20} />
+                                    <Plus size={20} /> إضافة
                                 </button>
                             </div>
 
