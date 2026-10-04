@@ -7,7 +7,18 @@ export default function SmartAlerts() {
     const currentSyncKey = localStorage.getItem('currentSyncKey');
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
 
-    const children = useLiveQuery(() => isMaster ? db.children.toArray() : db.children.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
+    const children = useLiveQuery(async () => {
+        let kids = isMaster ? await db.children.toArray() : await db.children.where('syncKey').equals(currentSyncKey || '').toArray();
+        kids = kids.filter(c => !c.isDeleted);
+        
+        if (isMaster) {
+            const saved = localStorage.getItem('appSettings');
+            const settings = saved ? JSON.parse(saved) : {};
+            const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
+            kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
+        }
+        return kids;
+    }, [currentSyncKey, isMaster]) || [];
     const attendance = useLiveQuery(() => isMaster ? db.attendance.toArray() : db.attendance.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
 
     const appSettingsStr = localStorage.getItem('appSettings');

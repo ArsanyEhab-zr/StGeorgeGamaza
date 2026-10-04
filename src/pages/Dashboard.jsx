@@ -46,14 +46,29 @@ export default function Dashboard() {
     const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
     const allowedClasses = currentServantObj.allowedClasses || [];
 
-    const children = useLiveQuery(() => {
-        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') return db.children.toArray();
-        if (currentSyncKey === 'STAGE_ADMIN') {
+    const children = useLiveQuery(async () => {
+        let kids = [];
+        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
+            kids = await db.children.toArray();
+        } else if (currentSyncKey === 'STAGE_ADMIN') {
             if (allowedClasses.length === 0) return [];
-            return db.children.where('syncKey').anyOf(allowedClasses).toArray();
+            kids = await db.children.where('syncKey').anyOf(allowedClasses).toArray();
+        } else if (currentSyncKey) {
+            kids = await db.children.where('syncKey').equals(currentSyncKey).toArray();
         }
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray();
+        
+        // 🌟 1. Filter out soft-deleted globally
+        kids = kids.filter(c => !c.isDeleted);
+        
+        // 🌟 2. For Master Admins, filter out orphaned kids (syncKey not in active Osras) to match MasterDashboard count exactly
+        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
+            const saved = localStorage.getItem('appSettings');
+            const settings = saved ? JSON.parse(saved) : {};
+            const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
+            kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
+        }
+        
+        return kids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSyncKey]);
 

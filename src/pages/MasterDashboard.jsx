@@ -32,15 +32,20 @@ export default function MasterDashboard() {
     const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin;
 
     // States
-    const children = useLiveQuery(() => {
+    const children = useLiveQuery(async () => {
         if (!hasAccess) return [];
-        if (isSuperAdmin || isPriest) return db.children.toArray();
-        if (isStageAdmin) {
+        let kids = [];
+        if (isSuperAdmin || isPriest) {
+            kids = await db.children.toArray();
+        } else if (isStageAdmin) {
             const allowedSyncKeys = currentServant.allowedClasses || [];
-            return db.children.filter(c => allowedSyncKeys.includes(c.syncKey)).toArray();
+            kids = await db.children.filter(c => allowedSyncKeys.includes(c.syncKey)).toArray();
+        } else if (currentSyncKey) {
+            kids = await db.children.where('syncKey').equals(currentSyncKey).toArray();
         }
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray();
+        
+        // Unify: Exclude soft-deleted kids globally
+        return kids.filter(c => !c.isDeleted);
     }, [hasAccess, isSuperAdmin, isPriest, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
     const [selectedOsraKey, setSelectedOsraKey] = useState(sessionStorage.getItem('master_osraKey') || null);
     const [searchTerm, setSearchTerm] = useState(sessionStorage.getItem('master_search') || '');
