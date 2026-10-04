@@ -106,6 +106,14 @@ const _syncDataWithCloud = async () => {
                     const mergedSettings = { ...localParsed, ...cloudSettings };
                     localStorage.setItem('appSettings', JSON.stringify(mergedSettings));
                     settingsUpdated = true;
+
+                    // 🚨 Orphan Data Purge: clear deprecated local db.servants 
+                    // so stale local evaluations/data don't leak into UI state
+                    try {
+                        await db.servants.clear();
+                    } catch (e) {
+                        console.warn('Failed to clear legacy db.servants', e);
+                    }
                 }
             }
         }

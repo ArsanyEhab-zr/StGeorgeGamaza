@@ -54,6 +54,23 @@ export default function ServantsMonthlyReport() {
                     }
                 });
 
+                // 🚨 CRITICAL BUG FIX: Exclude deleted servants
+                try {
+                    const appSettingsStr = localStorage.getItem('appSettings');
+                    if (appSettingsStr) {
+                        const appSettings = JSON.parse(appSettingsStr);
+                        const activeServants = appSettings.servants || [];
+                        
+                        if (activeServants.length > 0) {
+                            baseServants = baseServants.filter(s => 
+                                activeServants.some(active => active.id === s.id || active.phone === s.phone || active.name === s.name)
+                            );
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error filtering active servants:", err);
+                }
+
                 // Extract Osras for dropdown
                 const osras = new Set();
                 baseServants.forEach(s => {

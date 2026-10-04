@@ -10,7 +10,13 @@ export default function TrackingDashboards() {
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
 
     const children = useLiveQuery(() => isMaster ? db.children.toArray() : db.children.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
-    const servants = useLiveQuery(() => isMaster ? db.servants.toArray() : db.servants.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
+    
+    const appSettingsStr = localStorage.getItem('appSettings');
+    const appSettings = appSettingsStr ? JSON.parse(appSettingsStr) : {};
+    let servants = appSettings.servants || [];
+    if (!isMaster) {
+        servants = servants.filter(s => s.syncKey === currentSyncKey || s.osraName === currentSyncKey);
+    }
     
     const allPeople = [...children, ...servants];
 

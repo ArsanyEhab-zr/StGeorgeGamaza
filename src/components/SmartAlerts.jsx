@@ -8,12 +8,18 @@ export default function SmartAlerts() {
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
 
     const children = useLiveQuery(() => isMaster ? db.children.toArray() : db.children.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
-    const servants = useLiveQuery(() => isMaster ? db.servants.toArray() : db.servants.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
     const attendance = useLiveQuery(() => isMaster ? db.attendance.toArray() : db.attendance.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
 
     const alerts = useMemo(() => {
+        const appSettingsStr = localStorage.getItem('appSettings');
+        const appSettings = appSettingsStr ? JSON.parse(appSettingsStr) : {};
+        let activeServants = appSettings.servants || [];
+        if (!isMaster) {
+            activeServants = activeServants.filter(s => s.syncKey === currentSyncKey || s.osraName === currentSyncKey);
+        }
+
         let generatedAlerts = [];
-        const allPeople = [...children, ...servants];
+        const allPeople = [...children, ...activeServants];
 
         // 1. Birthdays (next 14 days)
         const today = new Date();
