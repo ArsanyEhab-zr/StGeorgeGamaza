@@ -42,8 +42,10 @@ export default function ExcelExporter() {
                 });
 
                 return {
+                    "كود المخدوم": child.id || "لم يتم إنشاء كود",
                     "الاسم": child.name || "",
                     "النوع": child.gender || "",
+                    "رابط الصورة المرفوعة": child.profilePic ? child.profilePic : "لا توجد صورة",
                     "الخدمة التابع لها": khedmaName,
                     "الأسرة التابع لها": osraName,
                     "تليفون الأم": child.motherPhone || "",
@@ -58,7 +60,8 @@ export default function ExcelExporter() {
                     "ملاحظات هامة": child.specialNotes || "",
                     "أب الاعتراف": child.fatherConfessor || "",
                     "مرسوم شماس": ((child.gender === 'boy' || child.gender === 'ولد') && child.isOrdained) ? "نعم" : "لا",
-                    "الرتبة الشماسية": ((child.gender === 'boy' || child.gender === 'ولد') && child.isOrdained) ? (child.ordinationRank || "") : ""
+                    "الرتبة الشماسية": ((child.gender === 'boy' || child.gender === 'ولد') && child.isOrdained) ? (child.ordinationRank || "") : "",
+                    "بيانات الـ QR": child.id ? `KHD:${child.id}` : "غير متوفر"
                 };
             });
 
@@ -69,8 +72,10 @@ export default function ExcelExporter() {
 
             // تظبيط عرض العواميد عشان الكلام يبان
             const wscols = [
+                { wch: 15 }, // كود المخدوم
                 { wch: 30 }, // الاسم
                 { wch: 10 }, // النوع
+                { wch: 40 }, // رابط الصورة المرفوعة
                 { wch: 25 }, // الخدمة التابع لها
                 { wch: 25 }, // الأسرة التابع لها
                 { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, // التليفونات (الأم، الأب، المخدوم، آخر)
@@ -82,7 +87,8 @@ export default function ExcelExporter() {
                 { wch: 40 }, // ملاحظات هامة
                 { wch: 25 }, // أب الاعتراف
                 { wch: 15 }, // مرسوم شماس
-                { wch: 25 }  // الرتبة الشماسية
+                { wch: 25 },  // الرتبة الشماسية
+                { wch: 20 }  // بيانات الـ QR
             ];
             worksheet['!cols'] = wscols;
 

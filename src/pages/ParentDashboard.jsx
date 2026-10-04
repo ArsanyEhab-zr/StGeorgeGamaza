@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { QRCodeCanvas } from 'qrcode.react';
 import { LogOut, Award, CheckCheck, Music, Play, Pause, UserCircle } from 'lucide-react';
 import { firestore } from '../db/firebase';
 import { doc, collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
@@ -222,6 +223,17 @@ export default function ParentDashboard() {
                         </div>
                     </div>
                 </div>
+
+                {/* QR Code Section */}
+                <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center animate-in slide-in-from-bottom-2">
+                    <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 shadow-inner mb-3 inline-block">
+                        <QRCodeCanvas value={`KHD:${childId}`} size={160} level="M" includeMargin={false} />
+                    </div>
+                    <p className="font-bold text-slate-500 font-mono text-sm tracking-wide" dir="ltr">
+                        كود المخدوم: {childId}
+                    </p>
+                    <p className="text-xs font-bold text-slate-400 mt-2">يمكن استخدام هذا الكود لتسجيل الحضور بسرعة</p>
+                </section>
 
                 {/* Attendance Summary */}
                 <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 animate-in slide-in-from-bottom-4">

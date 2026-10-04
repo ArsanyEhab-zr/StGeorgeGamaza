@@ -315,8 +315,10 @@ function StatsView({ childrenData, appSettings }) {
 
             return {
                 "م": c.id,
+                "كود المخدوم": c.id || "لم يتم إنشاء كود",
                 "اسم المخدوم": c.name || 'بدون اسم',
                 "النوع": c.gender || 'غير محدد',
+                "رابط الصورة المرفوعة": c.profilePic ? c.profilePic : "لا توجد صورة",
                 "تاريخ الميلاد": c.birthDate || 'غير مسجل',
                 "العمر التقريبي": calculatedAge,
                 "تليفون الأم": c.motherPhone || 'لا يوجد',
@@ -333,14 +335,17 @@ function StatsView({ childrenData, appSettings }) {
                 "آخر تاريخ افتقاد": c.last_visited || 'لم يُفتقد',
                 "أب الاعتراف": c.fatherConfessor || 'غير مسجل',
                 "الرتبة الشماسية": c.gender === 'ولد' ? (c.isOrdained ? c.ordinationRank || 'شماس' : 'غير مرسوم') : 'غير مطبق',
-                "ملاحظات إضافية": c.specialNotes || 'لا يوجد'
+                "ملاحظات إضافية": c.specialNotes || 'لا يوجد',
+                "بيانات الـ QR": c.id ? `KHD:${c.id}` : "غير متوفر"
             };
         });
 
         const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
 
         // تظبيط عرض العواميد
-        const wscols = [{ wch: 5 }, { wch: 25 }, { wch: 10 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 40 }];
+        const wscols = [
+            { wch: 5 }, { wch: 15 }, { wch: 25 }, { wch: 10 }, { wch: 40 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 20 }
+        ];
         worksheet['!cols'] = wscols;
 
         const workbook = XLSX.utils.book_new();
@@ -510,7 +515,7 @@ function StatsView({ childrenData, appSettings }) {
             </div>
 
             {/* ⚠️ 5. منطقة الخطر (التنظيف) */}
-            {!isMaster && (
+            {isMaster && (
                 <div className="bg-red-50 p-6 rounded-3xl border border-red-100 mt-10">
                     <h3 className="text-sm font-black text-red-800 mb-1 flex items-center gap-2">
                         <AlertTriangle className="text-red-500" size={16} /> منطقة تنظيف البيانات للفصل
@@ -611,10 +616,16 @@ function KidsManagerView({ childrenData }) {
         const childDataToSave = { ...formChild, birthMonth: bMonth, isDirty: true, updatedAt: now, isDeleted: false, syncKey: currentSyncKey };
 
         if (editingChild) {
+            delete childDataToSave.id; // Strictly ensure ID cannot be updated
             await db.children.update(editingChild.id, childDataToSave);
             setEditingChild(null);
         } else {
-            await db.children.add({ ...childDataToSave, streak: 0, gotClothes: false });
+            const year = new Date().getFullYear();
+            const g = (formChild.gender === 'boy' || formChild.gender === 'ولد') ? 'B' : 'G';
+            const rand = crypto.randomUUID().split('-')[0].substring(0, 4).toUpperCase();
+            const newId = `${year}-${g}-${rand}`;
+            
+            await db.children.add({ ...childDataToSave, id: newId, streak: 0, gotClothes: false });
             setIsAdding(false);
         }
         setFormChild(emptyChild);

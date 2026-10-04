@@ -371,7 +371,7 @@ function IdCard({ child, khedmaName, osraName, compact = false, forPrint = false
 
                 {/* ID */}
                 <div style={{ fontSize: '7px', fontWeight: 700, color: '#94a3b8', fontFamily: 'monospace', direction: 'ltr' }}>
-                    {qrValue}
+                    كود المخدوم: {child.id}
                 </div>
             </div>
         );
@@ -429,7 +429,7 @@ function IdCard({ child, khedmaName, osraName, compact = false, forPrint = false
             {/* Footer: ID & Download */}
             <div className="flex items-center justify-between print:justify-center mt-1">
                 <p className={`font-bold text-slate-400 font-mono text-center print:flex-none print:w-full ${compact ? 'text-[8px]' : 'text-[10px] pl-2'}`} dir="ltr">
-                    {qrValue}
+                    كود المخدوم: {child.id}
                 </p>
                 <button
                     onClick={downloadQR}

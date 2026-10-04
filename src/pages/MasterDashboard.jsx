@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 // 🌟 استدعاء فايربيز عشان زرار المزامنة
-import { doc, getDoc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, setDoc, writeBatch, collectionGroup, getDocs, collection, deleteDoc } from 'firebase/firestore';
+import { encryptData, decryptData } from '../encryption';
 import { firestore } from '../db/firebase';
-import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3 } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3, ArrowLeftRight, ChevronDown } from 'lucide-react';
 import ExcelExporter from '../components/ExcelExporter';
 import useAutoSync from '../hooks/useAutoSync';
 import { TENANT_CONFIG } from '../config/tenantConfig';
@@ -160,6 +161,112 @@ export default function MasterDashboard() {
         return c.childPhone || c.fatherPhone || c.motherPhone || c.phone || '';
     };
 
+
+    // 🔄 أداة ترحيل المخدومين بين الفصول
+    const [showTransferTool, setShowTransferTool] = useState(false);
+    const [transferSourceKey, setTransferSourceKey] = useState('');
+    const [transferTargetKey, setTransferTargetKey] = useState('');
+    const [transferSelectedIds, setTransferSelectedIds] = useState(new Set());
+    const [isTransferring, setIsTransferring] = useState(false);
+
+    const transferSourceChildren = useMemo(() => {
+        if (!transferSourceKey || !children) return [];
+        return children.filter(c => c.syncKey === transferSourceKey);
+    }, [transferSourceKey, children]);
+
+    const handleToggleTransferSelect = (childId) => {
+        setTransferSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(childId)) next.delete(childId);
+            else next.add(childId);
+            return next;
+        });
+    };
+
+    const handleToggleSelectAll = () => {
+        if (transferSelectedIds.size === transferSourceChildren.length) {
+            setTransferSelectedIds(new Set());
+        } else {
+            setTransferSelectedIds(new Set(transferSourceChildren.map(c => c.id)));
+        }
+    };
+
+    const executeTransfer = async () => {
+        if (!transferSourceKey || !transferTargetKey || transferSelectedIds.size === 0) return;
+        if (transferSourceKey === transferTargetKey) {
+            alert('⚠️ فصل المصدر والوجهة متطابقان! اختر فصلًا مختلفًا.');
+            return;
+        }
+        if (!window.confirm(`هل تريد ترحيل ${transferSelectedIds.size} مخدوم من الفصل المصدر إلى الفصل الجديد؟ هذه العملية ستنقل بياناتهم بالكامل.`)) return;
+
+        setIsTransferring(true);
+        try {
+            const batch = writeBatch(firestore);
+            let transferredCount = 0;
+
+            for (const childId of transferSelectedIds) {
+                try {
+                    const child = children.find(c => c.id === childId);
+                    if (!child) continue;
+
+                    const oldDocRef = doc(firestore, 'Osras', transferSourceKey, 'children', String(child.id));
+                    const newDocRef = doc(firestore, 'Osras', transferTargetKey, 'children', String(child.id));
+
+                    // قراءة الداتا المشفرة من المصدر
+                    const oldSnap = await getDoc(oldDocRef);
+                    if (!oldSnap.exists()) continue;
+
+                    const rawData = oldSnap.data();
+                    const decryptedData = rawData.payload ? decryptData(rawData.payload) : rawData;
+                    if (!decryptedData) continue;
+
+                    // تحديث الـ syncKey للفصل الجديد
+                    decryptedData.syncKey = transferTargetKey;
+                    decryptedData.updatedAt = new Date().toISOString();
+
+                    const newPayload = rawData.payload
+                        ? { payload: encryptData(decryptedData) }
+                        : decryptedData;
+
+                    batch.set(newDocRef, newPayload);
+                    batch.delete(oldDocRef);
+                    transferredCount++;
+                } catch (err) {
+                    console.error('Failed to transfer child:', childId, err);
+                }
+            }
+
+            if (transferredCount > 0) {
+                await batch.commit();
+
+                // تحديث Dexie محلياً
+                for (const childId of transferSelectedIds) {
+                    try {
+                        await db.children.update(childId, {
+                            syncKey: transferTargetKey,
+                            isDirty: false,
+                            updatedAt: new Date().toISOString()
+                        });
+                    } catch (_e) { /* skip if not found locally */ }
+                }
+
+                alert(`✅ تم ترحيل ${transferredCount} مخدوم بنجاح!`);
+                setTransferSelectedIds(new Set());
+                setTransferSourceKey('');
+                setTransferTargetKey('');
+                setShowTransferTool(false);
+            } else {
+                alert('لم يتم ترحيل أي مخدوم. تأكد من اختيار مخدومين صحيحين.');
+            }
+        } catch (error) {
+            console.error('Transfer error:', error);
+            alert('حدث خطأ أثناء الترحيل: ' + error.message);
+        } finally {
+            setIsTransferring(false);
+        }
+    };
+
+
     const activeOsra = selectedOsraKey === 'ALL_CHURCH'
         ? { name: (isSuperAdmin || isPriest) ? 'كل الكنيسة (جميع المخدومين)' : TENANT_CONFIG.MASTER_VIEW_NAME, logo: '' }
         : allowedOsras.find(o => o.syncKey === selectedOsraKey);
@@ -291,6 +398,109 @@ export default function MasterDashboard() {
             </header>
 
             <main className="p-4 max-w-4xl mx-auto mt-4">
+
+
+
+                {/* 🔄 أداة ترحيل المخدومين بين الفصول - Super Admin فقط */}
+                {isSuperAdmin && !selectedOsraKey && (
+                    <div className="mb-6 animate-in fade-in slide-in-from-top-4">
+                        <button
+                            onClick={() => setShowTransferTool(!showTransferTool)}
+                            className="w-full p-4 rounded-2xl font-black text-white shadow-md flex items-center justify-center gap-2 transition-all bg-indigo-600 hover:bg-indigo-700 hover:shadow-lg"
+                        >
+                            <ArrowLeftRight size={20} />
+                            أداة ترحيل المخدومين بين الفصول
+                            <ChevronDown size={16} className={`transition-transform ${showTransferTool ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {showTransferTool && (
+                            <div className="mt-3 bg-white p-5 rounded-3xl border-2 border-indigo-100 shadow-lg">
+                                {/* الفصل المصدر والوجهة */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-600 mb-2">📤 فصل المصدر</label>
+                                        <select
+                                            value={transferSourceKey}
+                                            onChange={(e) => { setTransferSourceKey(e.target.value); setTransferSelectedIds(new Set()); }}
+                                            className="w-full p-3 rounded-xl border-2 border-slate-200 font-bold text-sm bg-slate-50 focus:border-indigo-400 focus:outline-none transition-colors"
+                                        >
+                                            <option value="">-- اختر فصل المصدر --</option>
+                                            {allowedOsras.map(o => (
+                                                <option key={o.syncKey} value={o.syncKey}>{o.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-black text-slate-600 mb-2">📥 الفصل الجديد / الوجهة</label>
+                                        <select
+                                            value={transferTargetKey}
+                                            onChange={(e) => setTransferTargetKey(e.target.value)}
+                                            className="w-full p-3 rounded-xl border-2 border-slate-200 font-bold text-sm bg-slate-50 focus:border-indigo-400 focus:outline-none transition-colors"
+                                        >
+                                            <option value="">-- اختر الفصل الجديد --</option>
+                                            {allowedOsras.filter(o => o.syncKey !== transferSourceKey).map(o => (
+                                                <option key={o.syncKey} value={o.syncKey}>{o.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {/* جدول المخدومين */}
+                                {transferSourceKey && transferSourceChildren.length > 0 && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h4 className="text-sm font-black text-slate-700">مخدومين الفصل ({transferSourceChildren.length})</h4>
+                                            <button
+                                                onClick={handleToggleSelectAll}
+                                                className="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                            >
+                                                {transferSelectedIds.size === transferSourceChildren.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+                                            </button>
+                                        </div>
+                                        <div className="max-h-64 overflow-y-auto rounded-2xl border border-slate-200">
+                                            {transferSourceChildren.map((child) => (
+                                                <label
+                                                    key={child.id}
+                                                    className={`flex items-center gap-3 p-3 border-b border-slate-100 last:border-b-0 cursor-pointer transition-colors ${transferSelectedIds.has(child.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={transferSelectedIds.has(child.id)}
+                                                        onChange={() => handleToggleTransferSelect(child.id)}
+                                                        className="w-5 h-5 rounded-md accent-indigo-600 shrink-0"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="text-sm font-black text-slate-800 block truncate">{child.name}</span>
+                                                        <span className="text-[10px] font-bold text-slate-400">{String(child.id || '')}</span>
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg shrink-0">
+                                                        {String(child.gender || '').includes('ولد') || String(child.gender || '').toLowerCase() === 'boy' ? '👦' : '👧'}
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {transferSourceKey && transferSourceChildren.length === 0 && (
+                                    <p className="text-center text-sm font-bold text-slate-400 py-6">لا يوجد مخدومين في هذا الفصل.</p>
+                                )}
+
+                                {/* زر التنفيذ */}
+                                {transferSelectedIds.size > 0 && transferTargetKey && (
+                                    <button
+                                        onClick={executeTransfer}
+                                        disabled={isTransferring}
+                                        className={`w-full mt-4 p-3.5 rounded-2xl font-black text-white shadow-md flex items-center justify-center gap-2 transition-all ${isTransferring ? 'bg-slate-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-lg'}`}
+                                    >
+                                        <ArrowLeftRight size={18} />
+                                        {isTransferring ? 'جاري الترحيل بأمان...' : `ترحيل المخدومين المحددين (${transferSelectedIds.size})`}
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* 🚨 قسم طلبات التدخل الرعوي العاجلة */}
                 {!selectedOsraKey && pendingInterventions.length > 0 && (
