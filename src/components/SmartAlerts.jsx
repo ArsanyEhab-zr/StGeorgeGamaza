@@ -10,16 +10,16 @@ export default function SmartAlerts() {
     const children = useLiveQuery(() => isMaster ? db.children.toArray() : db.children.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
     const attendance = useLiveQuery(() => isMaster ? db.attendance.toArray() : db.attendance.where('syncKey').equals(currentSyncKey || '').toArray(), [currentSyncKey, isMaster]) || [];
 
-    const alerts = useMemo(() => {
-        const appSettingsStr = localStorage.getItem('appSettings');
-        const appSettings = appSettingsStr ? JSON.parse(appSettingsStr) : {};
-        let activeServants = appSettings.servants || [];
-        if (!isMaster) {
-            activeServants = activeServants.filter(s => s.syncKey === currentSyncKey || s.osraName === currentSyncKey);
-        }
+    const appSettingsStr = localStorage.getItem('appSettings');
+    const appSettings = appSettingsStr ? JSON.parse(appSettingsStr) : {};
+    let activeServants = appSettings?.servants || [];
+    if (!isMaster) {
+        activeServants = activeServants.filter(s => s?.syncKey === currentSyncKey || s?.osraName === currentSyncKey);
+    }
 
+    const alerts = useMemo(() => {
         let generatedAlerts = [];
-        const allPeople = [...children, ...activeServants];
+        const allPeople = [...(children || []), ...(activeServants || [])];
 
         // 1. Birthdays (next 14 days)
         const today = new Date();
@@ -27,7 +27,7 @@ export default function SmartAlerts() {
         nextTwoWeeks.setDate(today.getDate() + 14);
 
         allPeople.forEach(person => {
-            if (person.medicalStatus?.isSick) {
+            if (person?.medicalStatus?.isSick) {
                 generatedAlerts.push({
                     type: 'medical',
                     message: `${person.name} يحتاج افتقاد مرضي - ${person.medicalStatus.notes || ''}`,
@@ -37,13 +37,13 @@ export default function SmartAlerts() {
             }
 
             // Simple absence calculation (last 3 records)
-            const personAttendance = attendance.filter(a => a.childId === person.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+            const personAttendance = attendance.filter(a => a?.childId === person?.id).sort((a, b) => new Date(b.date) - new Date(a.date));
             if (personAttendance.length >= 3) {
                 const last3 = personAttendance.slice(0, 3);
                 if (last3.every(a => a.status === 'absent')) {
                     generatedAlerts.push({
                         type: 'absence',
-                        message: `${person.name} تغيب لثلاث مرات متتالية!`,
+                        message: `${person?.name} تغيب لثلاث مرات متتالية!`,
                         priority: 'medium',
                         icon: <UserMinus size={18} />
                     });
@@ -52,7 +52,7 @@ export default function SmartAlerts() {
 
             // Birthdays (simplified check, assumes proper Date format or simple extraction)
             // Warning: Arabic date parsing requires specific implementation. Assuming standard format for now.
-            if (person.birthDate && typeof person.birthDate === 'string' && person.birthDate.includes('-')) {
+            if (person?.birthDate && typeof person.birthDate === 'string' && person.birthDate.includes('-')) {
                 const [y, m, d] = person.birthDate.split('-').map(Number);
                 if (m && d) {
                     const bDayThisYear = new Date(today.getFullYear(), m - 1, d);
@@ -74,9 +74,9 @@ export default function SmartAlerts() {
             const pMap = { high: 1, medium: 2, low: 3 };
             return pMap[a.priority] - pMap[b.priority];
         });
-    }, [children, servants, attendance]);
+    }, [children, activeServants, attendance]);
 
-    if (alerts.length === 0) return null;
+    if (!alerts || alerts.length === 0) return null;
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 mb-6 no-print font-sans" dir="rtl">
