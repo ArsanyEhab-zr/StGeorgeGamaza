@@ -9,7 +9,7 @@ const ChildProfile = () => {
     const { triggerAutoSync } = useAutoSync();
     const { id } = useParams();
     const navigate = useNavigate();
-    const childId = Number(id);
+    const childId = String(id);
     const child = useLiveQuery(() => db.children.get(childId));
 
     const [isSaving, setIsSaving] = useState(false);

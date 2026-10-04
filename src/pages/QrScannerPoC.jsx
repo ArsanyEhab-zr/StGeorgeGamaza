@@ -44,8 +44,8 @@ function parseQrCode(rawText) {
     const trimmed = rawText.trim();
     if (trimmed.startsWith(QR_PREFIX)) {
         const id = trimmed.substring(QR_PREFIX.length);
-        if (id && !isNaN(Number(id))) {
-            return { childId: Number(id), raw: trimmed };
+        if (id) {
+            return { childId: String(id), raw: trimmed };
         }
     }
     return null;

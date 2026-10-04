@@ -11,7 +11,7 @@ export default function ChildInfo() {
     const { triggerAutoSync } = useAutoSync();
 
     // 🌟 نستخرج ID من الـ URL فقط ليكون المصدر الوحيد للحقيقة
-    const childId = Number(id);
+    const childId = String(id);
 
     // 🌟 تحديث البيانات في الخلفية فور فتح البروفايل
     useEffect(() => {
