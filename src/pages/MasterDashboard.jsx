@@ -26,17 +26,22 @@ export default function MasterDashboard() {
 
     // 👑 تحديد الصلاحيات بدقة جراحية
     const isSuperAdmin = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentServant.role === 'أدمن مساعد';
+    const isStageAdmin = currentServant.role === 'أمين مرحلة';
     const isPriest = currentServant.role === 'كاهن';
     const isAmin = currentServant.role === 'أمين خدمة' || currentServant.role === 'أمين أسرة';
-    const hasAccess = isSuperAdmin || isPriest || isAmin;
+    const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin;
 
     // States
     const children = useLiveQuery(() => {
         if (!hasAccess) return [];
         if (isSuperAdmin || isPriest) return db.children.toArray();
+        if (isStageAdmin) {
+            const allowedSyncKeys = currentServant.allowedClasses || [];
+            return db.children.filter(c => allowedSyncKeys.includes(c.syncKey)).toArray();
+        }
         if (!currentSyncKey) return [];
         return db.children.where('syncKey').equals(currentSyncKey).toArray();
-    }, [hasAccess, isSuperAdmin, isPriest, currentSyncKey]);
+    }, [hasAccess, isSuperAdmin, isPriest, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
     const [selectedOsraKey, setSelectedOsraKey] = useState(sessionStorage.getItem('master_osraKey') || null);
     const [searchTerm, setSearchTerm] = useState(sessionStorage.getItem('master_search') || '');
     const [genderFilter, setGenderFilter] = useState(sessionStorage.getItem('master_gender') || 'ALL');
@@ -95,17 +100,19 @@ export default function MasterDashboard() {
     useEffect(() => sessionStorage.setItem('master_gender', genderFilter), [genderFilter]);
     useEffect(() => sessionStorage.setItem('master_viewMode', viewMode), [viewMode]);
 
-    // 🌟 تحديد نطاق الرؤية (Scope)
     const allowedOsras = useMemo(() => {
         if (isSuperAdmin || isPriest) {
             return appSettings.services?.flatMap(s => s.osras || []) || [];
+        } else if (isStageAdmin) {
+            const allOsras = appSettings.services?.flatMap(s => s.osras || []) || [];
+            return allOsras.filter(o => (currentServant.allowedClasses || []).includes(o.syncKey));
         } else if (isAmin) {
             const myService = appSettings.services?.find(s => s.osras?.some(o => o.syncKey === currentSyncKey));
             if (myService) return myService.osras || [];
             return appSettings.services?.flatMap(s => s.osras || []) || [];
         }
         return [];
-    }, [appSettings, isSuperAdmin, isPriest, isAmin, currentSyncKey]);
+    }, [appSettings, isSuperAdmin, isPriest, isAmin, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
 
     // 🌟🌟 Auto-Pull: سحب الهيكل المركزي تلقائياً عند فتح الصفحة 🌟🌟
     useEffect(() => {
@@ -426,7 +433,7 @@ export default function MasterDashboard() {
                                         >
                                             <option value="">-- اختر فصل المصدر --</option>
                                             {allowedOsras.map(o => (
-                                                <option key={o.syncKey} value={o.syncKey}>{o.name}</option>
+                                                <option key={o.syncKey} value={o.syncKey || ''}>{o.name}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -439,7 +446,7 @@ export default function MasterDashboard() {
                                         >
                                             <option value="">-- اختر الفصل الجديد --</option>
                                             {allowedOsras.filter(o => o.syncKey !== transferSourceKey).map(o => (
-                                                <option key={o.syncKey} value={o.syncKey}>{o.name}</option>
+                                                <option key={o.syncKey} value={o.syncKey || ''}>{o.name}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -566,9 +573,11 @@ export default function MasterDashboard() {
                                 </div>
                             </div>
 
-                            <div className="col-span-1 sm:col-span-2 mt-2">
-                                <ExcelExporter />
-                            </div>
+                            {!isStageAdmin && (
+                                <div className="col-span-1 sm:col-span-2 mt-2">
+                                    <ExcelExporter />
+                                </div>
+                            )}
 
                             {/* 📂 كروت الأسر المنفصلة */}
                             {allowedOsras.map((osra) => {

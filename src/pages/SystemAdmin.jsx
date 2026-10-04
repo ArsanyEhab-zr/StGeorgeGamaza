@@ -65,7 +65,7 @@ export default function SystemAdmin() {
     const [temporarySuperAdmin, setTemporarySuperAdmin] = useState(false);
     const [adminPasswordInput, setAdminPasswordInput] = useState("");
     const [form, setForm] = useState(getSettings());
-    const [newServant, setNewServant] = useState({ name: '', role: 'خادم', email: '', phone: '', assignedOsra: '', syncKey: '', password: '' });
+    const [newServant, setNewServant] = useState({ name: '', role: 'خادم', email: '', phone: '', assignedOsra: '', syncKey: '', password: '', allowedClasses: [] });
 
     const [curriculumModal, setCurriculumModal] = useState({ isOpen: false, sId: null, oId: null, osraName: '' });
     const [isUploadingPdf, setIsUploadingPdf] = useState(false);
@@ -319,12 +319,13 @@ export default function SystemAdmin() {
             phone: newServant.phone || "",
             assignedOsra: newServant.assignedOsra || "",
             syncKey: newServant.syncKey || "",
-            password: newServant.password || ""
+            password: newServant.password || "",
+            allowedClasses: newServant.allowedClasses || []
         };
         const cleanServantObj = JSON.parse(JSON.stringify(newServantObj));
         const updatedServants = [...(form.servants || []), cleanServantObj];
         setForm({ ...form, servants: updatedServants });
-        setNewServant({ name: '', role: 'خادم', email: '', phone: '', assignedOsra: '', syncKey: '', password: '' });
+        setNewServant({ name: '', role: 'خادم', email: '', phone: '', assignedOsra: '', syncKey: '', password: '', allowedClasses: [] });
     };
 
     const handleRemoveServant = (id) => {
@@ -571,11 +572,11 @@ export default function SystemAdmin() {
                                         <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             <div>
                                                 <label className="text-xs font-bold text-slate-500 ml-1">اسم الخدمة</label>
-                                                <input type="text" value={service.name} readOnly={!isSuperAdmin} onChange={e => handleUpdateService(service.id, 'name', e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black text-lg focus:ring-2 focus:ring-indigo-400" required />
+                                                <input type="text" value={service.name || ''} readOnly={!isSuperAdmin} onChange={e => handleUpdateService(service.id, 'name', e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-black text-lg focus:ring-2 focus:ring-indigo-400" required />
                                             </div>
                                             <div>
                                                 <label className="text-xs font-bold text-slate-500 ml-1">الأب الكاهن</label>
-                                                <input type="text" value={service.priest} readOnly={!isSuperAdmin} onChange={e => handleUpdateService(service.id, 'priest', e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" />
+                                                <input type="text" value={service.priest || ''} readOnly={!isSuperAdmin} onChange={e => handleUpdateService(service.id, 'priest', e.target.value)} className="w-full p-3 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" />
                                             </div>
                                         </div>
                                     </div>
@@ -608,15 +609,15 @@ export default function SystemAdmin() {
                                                             )}
                                                         </div>
                                                         <div className="flex-1">
-                                                            <input type="text" value={osra.name} onChange={e => handleUpdateOsra(service.id, osra.id, 'name', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg font-black text-sm mb-1" placeholder="اسم الأسرة" />
-                                                            <input type="text" placeholder="أمين الأسرة..." value={osra.amin} onChange={e => handleUpdateOsra(service.id, osra.id, 'amin', e.target.value)} className="w-full p-1.5 bg-transparent border-b border-slate-200 text-xs font-bold" />
+                                                            <input type="text" value={osra.name || ''} onChange={e => handleUpdateOsra(service.id, osra.id, 'name', e.target.value)} className="w-full p-2 bg-white border border-slate-200 rounded-lg font-black text-sm mb-1" placeholder="اسم الأسرة" />
+                                                            <input type="text" placeholder="أمين الأسرة..." value={osra.amin || ''} onChange={e => handleUpdateOsra(service.id, osra.id, 'amin', e.target.value)} className="w-full p-1.5 bg-transparent border-b border-slate-200 text-xs font-bold" />
                                                         </div>
                                                     </div>
 
                                                     <div className="grid grid-cols-2 gap-2 mb-3">
                                                         <div>
                                                             <label className="text-[10px] font-bold text-slate-500">مفتاح الكلاود</label>
-                                                            <input type="text" value={osra.syncKey} readOnly={!isSuperAdmin && !isPriest} onChange={e => handleUpdateOsra(service.id, osra.id, 'syncKey', e.target.value)} className="w-full p-2 bg-indigo-50 border border-indigo-100 rounded-lg font-black text-xs text-indigo-700 text-center" dir="ltr" required />
+                                                            <input type="text" value={osra.syncKey || ''} readOnly={!isSuperAdmin && !isPriest} onChange={e => handleUpdateOsra(service.id, osra.id, 'syncKey', e.target.value)} className="w-full p-2 bg-indigo-50 border border-indigo-100 rounded-lg font-black text-xs text-indigo-700 text-center" dir="ltr" required />
                                                         </div>
                                                         <div>
                                                             <label className="text-[10px] font-bold text-slate-500">منهج الأسرة (PDF)</label>
@@ -640,12 +641,12 @@ export default function SystemAdmin() {
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-red-600 ml-1">باسوورد مطور النظام</label>
-                                    <input type="text" value={form.adminPass} onChange={e => setForm({ ...form, adminPass: e.target.value })} className="w-full p-3 bg-red-50 border border-red-200 rounded-xl font-black text-center text-red-800" required />
+                                    <input type="text" value={form.adminPass || ''} onChange={e => setForm({ ...form, adminPass: e.target.value })} className="w-full p-3 bg-red-50 border border-red-200 rounded-xl font-black text-center text-red-800" required />
                                 </div>
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-600 ml-1">كلمة سر مسح الداتا</label>
-                                    <input type="text" value={form.deletePass} onChange={e => setForm({ ...form, deletePass: e.target.value })} className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl font-black text-center" required />
+                                    <input type="text" value={form.deletePass || ''} onChange={e => setForm({ ...form, deletePass: e.target.value })} className="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl font-black text-center" required />
                                 </div>
                             </div>
                         </div>
@@ -668,7 +669,7 @@ export default function SystemAdmin() {
 
                         <div className="bg-white p-4 rounded-3xl shadow-sm border border-indigo-50 mb-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                                <select value={newServant.role} onChange={e => {
+                                <select value={newServant.role || ''} onChange={e => {
                                     const selectedRole = e.target.value;
                                     if (selectedRole === 'كاهن' || selectedRole === 'أدمن مساعد') {
                                         setNewServant({ ...newServant, role: selectedRole, assignedOsra: 'كل الأسر (صلاحية كاملة)', syncKey: 'MASTER_ACCESS' });
@@ -679,14 +680,15 @@ export default function SystemAdmin() {
                                     <option value="خادم">خادم عادي</option>
                                     <option value="تاسوني">تاسوني</option>
                                     <option value="أمين أسرة">أمين أسرة</option>
+                                    <option value="أمين مرحلة">أمين مرحلة</option>
                                     <option value="كاهن">أب كاهن</option>
                                     <option value="أدمن مساعد">أدمن مساعد</option>
                                 </select>
 
-                                <input type="text" placeholder="اسم الخادم..." value={newServant.name} onChange={e => setNewServant({ ...newServant, name: e.target.value })} className="p-3 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm" />
-                                <input type="tel" placeholder="رقم التليفون (للدخول)..." value={newServant.phone} onChange={e => setNewServant({ ...newServant, phone: e.target.value })} className="p-3 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm text-left" dir="ltr" />
+                                <input type="text" placeholder="اسم الخادم..." value={newServant.name || ''} onChange={e => setNewServant({ ...newServant, name: e.target.value })} className="p-3 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm" />
+                                <input type="tel" placeholder="رقم التليفون (للدخول)..." value={newServant.phone || ''} onChange={e => setNewServant({ ...newServant, phone: e.target.value })} className="p-3 rounded-xl border border-slate-200 bg-slate-50 font-bold text-sm text-left" dir="ltr" />
 
-                                <select value={newServant.assignedOsra} disabled={newServant.role === 'كاهن' || newServant.role === 'أدمن مساعد'} onChange={e => {
+                                <select value={newServant.assignedOsra || ''} disabled={newServant.role === 'كاهن' || newServant.role === 'أدمن مساعد' || newServant.role === 'أمين مرحلة'} onChange={e => {
                                     const selectedOsraName = e.target.value;
                                     let matchedSyncKey = '';
                                     form.services?.forEach(service => {
@@ -694,9 +696,11 @@ export default function SystemAdmin() {
                                         if (foundOsra) matchedSyncKey = foundOsra.syncKey;
                                     });
                                     setNewServant({ ...newServant, assignedOsra: selectedOsraName, syncKey: matchedSyncKey });
-                                }} className={`p-3 rounded-xl border font-bold text-sm ${newServant.role === 'كاهن' || newServant.role === 'أدمن مساعد' ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'border-indigo-200 bg-indigo-50/50 text-indigo-800'}`}>
+                                }} className={`p-3 rounded-xl border font-bold text-sm ${newServant.role === 'كاهن' || newServant.role === 'أدمن مساعد' || newServant.role === 'أمين مرحلة' ? 'bg-amber-50 border-amber-200 text-amber-700 cursor-not-allowed' : 'border-indigo-200 bg-indigo-50/50 text-indigo-800'}`}>
                                     {newServant.role === 'كاهن' || newServant.role === 'أدمن مساعد' ? (
                                         <option value="كل الأسر (صلاحية كاملة)">كل الأسر (صلاحية كاملة)</option>
+                                    ) : newServant.role === 'أمين مرحلة' ? (
+                                        <option value="قطاع مخصص">قطاع مخصص (عدة فصول)</option>
                                     ) : (
                                         <>
                                             <option value="">اختر الأسرة...</option>
@@ -705,8 +709,37 @@ export default function SystemAdmin() {
                                     )}
                                 </select>
 
-                                <input type="text" placeholder="مفتاح الكلاود..." value={newServant.syncKey} readOnly className={`p-3 rounded-xl border font-black text-sm text-left cursor-not-allowed ${newServant.syncKey === 'MASTER_ACCESS' ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-inner' : 'bg-slate-100 border-slate-200 text-slate-500'}`} dir="ltr" />
+                                <input type="text" placeholder="مفتاح الكلاود..." value={newServant.syncKey || ''} readOnly className={`p-3 rounded-xl border font-black text-sm text-left cursor-not-allowed ${newServant.syncKey === 'MASTER_ACCESS' || newServant.syncKey === 'STAGE_ADMIN' ? 'bg-amber-100 border-amber-400 text-amber-900 shadow-inner' : 'bg-slate-100 border-slate-200 text-slate-500'}`} dir="ltr" />
                             </div>
+
+                            {newServant.role === 'أمين مرحلة' && (
+                                <div className="mb-6 p-4 rounded-xl border-2 border-indigo-100 bg-white">
+                                    <label className="block text-sm font-black text-slate-700 mb-3">اختر الفصول المسموح بها لأمين المرحلة:</label>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {form.services?.flatMap(s => s.osras).map((osra) => (
+                                            <label key={osra.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 border border-transparent hover:border-slate-200 cursor-pointer transition-colors">
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={(newServant.allowedClasses || []).includes(osra.syncKey)}
+                                                    onChange={(e) => {
+                                                        const current = new Set(newServant.allowedClasses || []);
+                                                        if (e.target.checked) current.add(osra.syncKey);
+                                                        else current.delete(osra.syncKey);
+                                                        setNewServant({ 
+                                                            ...newServant, 
+                                                            allowedClasses: Array.from(current), 
+                                                            assignedOsra: 'قطاع مخصص', 
+                                                            syncKey: 'STAGE_ADMIN' 
+                                                        });
+                                                    }}
+                                                    className="w-5 h-5 text-indigo-600 rounded-md"
+                                                />
+                                                <span className="text-sm font-bold text-slate-800">{osra.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             <button type="button" onClick={handleAddServant} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black shadow-md hover:bg-indigo-700 flex justify-center items-center gap-2">
                                 <UserPlus size={18} /> إضافة الخادم يدوياً
                             </button>

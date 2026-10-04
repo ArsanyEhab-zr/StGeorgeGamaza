@@ -220,7 +220,7 @@ export default function ParentLogin() {
                         >
                             <option value="" disabled>-- اختر الفصل --</option>
                             {classes.map((c, i) => (
-                                <option key={i} value={c.name}>{c.name}</option>
+                                <option key={i} value={c.name || ''}>{c.name}</option>
                             ))}
                         </select>
                     </div>

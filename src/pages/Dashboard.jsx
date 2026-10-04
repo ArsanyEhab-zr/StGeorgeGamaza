@@ -40,12 +40,22 @@ export default function Dashboard() {
     const [currentView, setCurrentView] = useState('menu');
     const [appSettings, setAppSettings] = useState(getSettings());
     const currentSyncKey = localStorage.getItem('currentSyncKey');
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
+    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    
+    // 🔥 تعريفات سحب الداتا السحابية والمحلية
+    const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
+    const allowedClasses = currentServantObj.allowedClasses || [];
+
     const children = useLiveQuery(() => {
-        if (isMaster) return db.children.toArray();
+        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') return db.children.toArray();
+        if (currentSyncKey === 'STAGE_ADMIN') {
+            if (allowedClasses.length === 0) return [];
+            return db.children.where('syncKey').anyOf(allowedClasses).toArray();
+        }
         if (!currentSyncKey) return [];
         return db.children.where('syncKey').equals(currentSyncKey).toArray();
-    }, [currentSyncKey, isMaster]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentSyncKey]);
 
     // 🌟 currentSyncKey and isMaster are already defined above with the children query
 
@@ -118,7 +128,6 @@ export default function Dashboard() {
         }
     };
 
-    const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
     const dynamicTitle = currentServantObj.stageName || currentServantObj.serviceName || currentServantObj.osraName || currentServantObj.role || appSettings.khedmaName || 'الخدمة';
 
     return (
@@ -352,11 +361,10 @@ function StatsView({ childrenData, appSettings }) {
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         XLSX.writeFile(workbook, `${fileName}_${today}.xlsx`);
     };
-
     const currentSyncKey = localStorage.getItem('currentSyncKey');
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
+    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
     const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
-    const className = currentServantObj.stageName || currentServantObj.serviceName || currentServantObj.osraName || appSettings.khedmaName || 'هذا الفصل';
+    const className = currentServantObj.stageName || currentServantObj.serviceName || currentServantObj.osraName || appSettings.khedmaName || 'الخدمة المركزية';
 
     const handleGlobalReset = async () => {
         if (window.confirm(`هل أنت متأكد من تصفير/مسح بيانات فصل ${className} فقط؟ لن تؤثر هذه العملية على بقية الفصول.`)) {
@@ -667,7 +675,7 @@ function KidsManagerView({ childrenData }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1 md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 ml-1">الاسم رباعي *</label>
-                            <input type="text" value={formChild.name} onChange={e => setFormChild({ ...formChild, name: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" required />
+                            <input type="text" value={formChild.name || ''} onChange={e => setFormChild({ ...formChild, name: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" required />
                         </div>
 
                         <div className="space-y-1">
@@ -681,17 +689,17 @@ function KidsManagerView({ childrenData }) {
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1"><Calendar size={12} /> تاريخ الميلاد</label>
-                            <input type="text" placeholder="مثال: 15 اغسطس 2016" value={formChild.birthDate} onChange={e => setFormChild({ ...formChild, birthDate: e.target.value })} className="w-full h-13.5 px-4 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                            <input type="text" placeholder="مثال: 15 اغسطس 2016" value={formChild.birthDate || ''} onChange={e => setFormChild({ ...formChild, birthDate: e.target.value })} className="w-full h-13.5 px-4 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                         </div>
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1"><Phone size={12} /> تليفون الأم</label>
-                            <input type="tel" value={formChild.motherPhone} onChange={e => setFormChild({ ...formChild, motherPhone: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-left" dir="ltr" />
+                            <input type="tel" value={formChild.motherPhone || ''} onChange={e => setFormChild({ ...formChild, motherPhone: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-left" dir="ltr" />
                         </div>
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1"><Phone size={12} /> تليفون الأب</label>
-                            <input type="tel" value={formChild.fatherPhone} onChange={e => setFormChild({ ...formChild, fatherPhone: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-left" dir="ltr" />
+                            <input type="tel" value={formChild.fatherPhone || ''} onChange={e => setFormChild({ ...formChild, fatherPhone: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-left" dir="ltr" />
                         </div>
 
                         <div className="space-y-1">
@@ -716,22 +724,22 @@ function KidsManagerView({ childrenData }) {
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-indigo-600 ml-1 flex items-center gap-1"><MapPin size={12} /> المنطقة (مثال: العصافرة)</label>
-                            <input type="text" value={formChild.address} onChange={e => setFormChild({ ...formChild, address: e.target.value })} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" />
+                            <input type="text" value={formChild.address || ''} onChange={e => setFormChild({ ...formChild, address: e.target.value })} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-xl font-bold focus:ring-2 focus:ring-indigo-400" />
                         </div>
 
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-blue-600 ml-1 flex items-center gap-1"><Map size={12} /> لوكيشن البيت (GPS Link)</label>
-                            <input type="url" value={formChild.gpsLink} onChange={e => setFormChild({ ...formChild, gpsLink: e.target.value })} className="w-full p-4 bg-blue-50 border border-blue-100 rounded-xl font-bold text-left" dir="ltr" />
+                            <input type="url" value={formChild.gpsLink || ''} onChange={e => setFormChild({ ...formChild, gpsLink: e.target.value })} className="w-full p-4 bg-blue-50 border border-blue-100 rounded-xl font-bold text-left" dir="ltr" />
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
                             <label className="text-xs font-bold text-indigo-600 ml-1 flex items-center gap-1"><MapPin size={12} /> العنوان التفصيلي (وصف البيت)</label>
-                            <textarea value={formChild.detailedAddress} onChange={e => setFormChild({ ...formChild, detailedAddress: e.target.value })} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-xl font-bold min-h-20" placeholder="مثال: شارع صيدلية ملكه عمارة 38 الدور الرابع..."></textarea>
+                            <textarea value={formChild.detailedAddress || ''} onChange={e => setFormChild({ ...formChild, detailedAddress: e.target.value })} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-xl font-bold min-h-20" placeholder="مثال: شارع صيدلية ملكه عمارة 38 الدور الرابع..."></textarea>
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
                             <label className="text-xs font-bold text-slate-500 ml-1 flex items-center gap-1"><Briefcase size={12} /> وظيفة الأب</label>
-                            <input type="text" value={formChild.fatherJob} onChange={e => setFormChild({ ...formChild, fatherJob: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                            <input type="text" value={formChild.fatherJob || ''} onChange={e => setFormChild({ ...formChild, fatherJob: e.target.value })} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
                         </div>
 
                         <div className="space-y-1 md:col-span-2">
@@ -763,7 +771,7 @@ function KidsManagerView({ childrenData }) {
 
                         <div className="space-y-1 md:col-span-2">
                             <label className="text-xs font-bold text-amber-600 ml-1 flex items-center gap-1"><StickyNote size={12} /> ملاحظات هامة</label>
-                            <textarea value={formChild.specialNotes} onChange={e => setFormChild({ ...formChild, specialNotes: e.target.value })} className="w-full p-4 bg-amber-50 border border-amber-100 rounded-xl font-bold min-h-25"></textarea>
+                            <textarea value={formChild.specialNotes || ''} onChange={e => setFormChild({ ...formChild, specialNotes: e.target.value })} className="w-full p-4 bg-amber-50 border border-amber-100 rounded-xl font-bold min-h-25"></textarea>
                         </div>
                     </div>
 

@@ -39,8 +39,8 @@ export default function Home() {
     const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
 
     // 🌟 تحديد صلاحيات الخادم (ماستر أو كاهن أو أمين خدمة أو أدمن مساعد)
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-    const isLeadership = isMaster || currentServant.role === 'كاهن' || currentServant.role === 'أمين أسرة' || currentServant.role === 'أدمن مساعد';
+    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    const isLeadership = isMaster || currentServant.role === 'كاهن' || currentServant.role === 'أمين أسرة' || currentServant.role === 'أدمن مساعد' || currentServant.role === 'أمين مرحلة';
 
     // 🌟 جلب إعدادات الكنيسة والخدمة
     const [appSettings, setAppSettings] = useState({ khedmaName: "الخدمة", osraName: "الأسرة", osraLogo: "", khedmaLogo: "" });
@@ -289,10 +289,17 @@ export default function Home() {
                         if (s.osras) list = [...list, ...s.osras];
                     });
                 }
+                
+                if (currentServant.role === 'أمين مرحلة') {
+                    const allowed = currentServant.allowedClasses || [];
+                    list = list.filter(osra => allowed.includes(osra.syncKey));
+                }
+                
                 return list;
             } catch (e) { return []; }
         }
         return [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMaster]);
 
     const handleEnterOsra = (osra) => {
@@ -395,56 +402,56 @@ export default function Home() {
 
 
                 {/* 🌟 لوحة الكاهن الشاملة (تظهر فقط للأدمن/الكاهن) */}
-                {isMaster && (
-                    <>
-                        <Link to="/master-dashboard" className="mb-8 flex items-center justify-between bg-linear-to-r from-amber-500 to-yellow-500 p-4 rounded-3xl shadow-lg shadow-amber-500/20 active:scale-95 transition-transform border border-amber-300">
-                            <div className="flex items-center gap-3 text-white">
-                                <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
-                                    <Crown size={24} />
-                                </div>
-                                <div>
-                                    <h2 className="font-black text-lg">لوحة الكاهن الشاملة</h2>
-                                    <p className="text-[10px] font-bold text-amber-50">مراقبة جميع الأسر والمخدومين</p>
-                                </div>
+                {isMaster && currentServant.role !== 'أمين مرحلة' && (
+                    <Link to="/master-dashboard" className="mb-8 flex items-center justify-between bg-linear-to-r from-amber-500 to-yellow-500 p-4 rounded-3xl shadow-lg shadow-amber-500/20 active:scale-95 transition-transform border border-amber-300">
+                        <div className="flex items-center gap-3 text-white">
+                            <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                                <Crown size={24} />
                             </div>
-                            <ArrowRight size={20} className="text-white opacity-80" />
-                        </Link>
-
-                        {/* 🌟 Classes Dashboard (Central Control Room) */}
-                        <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <h2 className="text-xl font-black text-indigo-900 mb-4 flex items-center gap-2">
-                                <Church className="text-amber-500" /> لوحة الفصول والأسر
-                            </h2>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                {masterOsras.length > 0 ? masterOsras.map((osra, i) => (
-                                    <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
-                                        <div className="flex items-center gap-4 mb-5">
-                                            {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
-                                                <img src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} alt={osra.name} className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm" />
-                                            ) : (
-                                                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30">
-                                                    {osra.name ? osra.name.charAt(0) : "ف"}
-                                                </div>
-                                            )}
-                                            <div>
-                                                <h3 className="text-white font-black text-lg">{osra.name}</h3>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => handleEnterOsra(osra)}
-                                            className="w-full bg-amber-500 hover:bg-amber-400 text-indigo-950 py-3 rounded-2xl text-sm font-black shadow-md transition-colors flex items-center justify-center gap-2"
-                                        >
-                                            <Award size={18} /> الدخول كخادم للأسرة
-                                        </button>
-                                    </div>
-                                )) : (
-                                    <div className="col-span-full text-center p-8 bg-white rounded-3xl shadow-sm border border-slate-100 text-slate-500 font-bold">
-                                        لا توجد أسر مسجلة. قم بإضافتها من الإعدادات.
-                                    </div>
-                                )}
+                            <div>
+                                <h2 className="font-black text-lg">لوحة الكاهن الشاملة</h2>
+                                <p className="text-[10px] font-bold text-amber-50">مراقبة جميع الأسر والمخدومين</p>
                             </div>
                         </div>
-                    </>
+                        <ArrowRight size={20} className="text-white opacity-80" />
+                    </Link>
+                )}
+
+                {/* 🌟 Classes Dashboard (Central Control Room) */}
+                {isMaster && (
+                    <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <h2 className="text-xl font-black text-indigo-900 mb-4 flex items-center gap-2">
+                            <Church className="text-amber-500" /> لوحة الفصول والأسر
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {masterOsras.length > 0 ? masterOsras.map((osra, i) => (
+                                <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
+                                    <div className="flex items-center gap-4 mb-5">
+                                        {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
+                                            <img src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} alt={osra.name} className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm" />
+                                        ) : (
+                                            <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30">
+                                                {osra.name ? osra.name.charAt(0) : "ف"}
+                                            </div>
+                                        )}
+                                        <div>
+                                            <h3 className="text-white font-black text-lg">{osra.name}</h3>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => handleEnterOsra(osra)}
+                                        className="w-full bg-amber-500 hover:bg-amber-400 text-indigo-950 py-3 rounded-2xl text-sm font-black shadow-md transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Award size={18} /> الدخول كخادم للأسرة
+                                    </button>
+                                </div>
+                            )) : (
+                                <div className="col-span-full text-center p-8 bg-white rounded-3xl shadow-sm border border-slate-100 text-slate-500 font-bold">
+                                    لا توجد أسر مخصصة لك.
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 )}
 
                 {/* 🌟 3 Primary Cards */}

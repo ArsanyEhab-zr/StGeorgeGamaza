@@ -247,7 +247,7 @@ export default function ServantsFollowUp() {
                                         </td>
                                         <td className="p-4">
                                             <select 
-                                                value={s.attendance} 
+                                                value={s.attendance || ''} 
                                                 onChange={e => handleUpdate(s.id, 'attendance', e.target.value)}
                                                 className={`w-full p-2 rounded-lg text-xs font-black text-center outline-none border ${s.attendance === 'حضور' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : s.attendance === 'غياب' ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}
                                             >
@@ -269,19 +269,19 @@ export default function ServantsFollowUp() {
                                             <input type="checkbox" disabled={s.attendance !== 'حضور'} checked={s.visitation} onChange={e => handleUpdate(s.id, 'visitation', e.target.checked)} className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed" />
                                         </td>
                                         <td className="p-4 text-center">
-                                            <input type="date" value={s.confessionDate} onChange={e => handleUpdate(s.id, 'confessionDate', e.target.value)} className="bg-slate-800 border border-slate-600 text-slate-300 rounded-lg p-2 text-xs font-bold w-full outline-none focus:border-emerald-500" />
+                                            <input type="date" value={s.confessionDate || ''} onChange={e => handleUpdate(s.id, 'confessionDate', e.target.value)} className="bg-slate-800 border border-slate-600 text-slate-300 rounded-lg p-2 text-xs font-bold w-full outline-none focus:border-emerald-500" />
                                         </td>
                                         <td className="p-4 text-center border-r border-slate-700 bg-slate-800/30">
                                             <input type="checkbox" checked={s.activitiesService} onChange={e => handleUpdate(s.id, 'activitiesService', e.target.checked)} className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500 cursor-pointer accent-blue-500" />
                                         </td>
                                         <td className="p-4 text-center border-l border-slate-700 bg-slate-800/30">
-                                            <textarea value={s.activitiesDiocese} onChange={e => handleUpdate(s.id, 'activitiesDiocese', e.target.value)} placeholder="نشاط ايبارشية..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-800 border border-slate-600 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500" />
+                                            <textarea value={s.activitiesDiocese || ''} onChange={e => handleUpdate(s.id, 'activitiesDiocese', e.target.value)} placeholder="نشاط ايبارشية..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-800 border border-slate-600 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500" />
                                         </td>
                                         <td className="p-4">
-                                            <textarea value={s.tasks} onChange={e => handleUpdate(s.id, 'tasks', e.target.value)} placeholder="ملاحظات الخادم..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-800 border border-slate-600 text-xs text-white placeholder-slate-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                                            <textarea value={s.tasks || ''} onChange={e => handleUpdate(s.id, 'tasks', e.target.value)} placeholder="ملاحظات الخادم..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-800 border border-slate-600 text-xs text-white placeholder-slate-500 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
                                         </td>
                                         <td className="p-4">
-                                            <textarea value={s.leaderNotes} onChange={e => handleUpdate(s.id, 'leaderNotes', e.target.value)} placeholder="ملاحظات أمين الخدمة..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-700 border border-amber-600/30 text-xs text-white placeholder-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" />
+                                            <textarea value={s.leaderNotes || ''} onChange={e => handleUpdate(s.id, 'leaderNotes', e.target.value)} placeholder="ملاحظات أمين الخدمة..." className="resize-y min-h-[60px] min-w-[120px] p-2 w-full rounded bg-slate-700 border border-amber-600/30 text-xs text-white placeholder-slate-400 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500" />
                                         </td>
                                     </tr>
                                 ))}
@@ -299,7 +299,7 @@ export default function ServantsFollowUp() {
                                 <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
                                     <h3 className="font-black text-emerald-400 text-lg">{s.name}</h3>
                                     <select 
-                                        value={s.attendance} 
+                                        value={s.attendance || ''} 
                                         onChange={e => handleUpdate(s.id, 'attendance', e.target.value)}
                                         className={`p-1.5 rounded-lg text-xs font-black text-center outline-none border ${s.attendance === 'حضور' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : s.attendance === 'غياب' ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}
                                     >
@@ -328,7 +328,7 @@ export default function ServantsFollowUp() {
                                 </div>
                                 <div className="mb-4">
                                     <label className="block text-xs text-slate-400 mb-1">تاريخ الاعتراف</label>
-                                    <input type="date" value={s.confessionDate} onChange={e => handleUpdate(s.id, 'confessionDate', e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-300 rounded-lg p-2 text-sm outline-none" />
+                                    <input type="date" value={s.confessionDate || ''} onChange={e => handleUpdate(s.id, 'confessionDate', e.target.value)} className="w-full bg-slate-800 border border-slate-700 text-slate-300 rounded-lg p-2 text-sm outline-none" />
                                 </div>
                                 <div className="mb-4 bg-slate-800/50 p-3 rounded-xl border border-slate-700">
                                     <label className="block text-xs text-slate-400 mb-2 border-b border-slate-700 pb-1">مشارك بالأنشطة</label>
@@ -337,17 +337,17 @@ export default function ServantsFollowUp() {
                                             <input type="checkbox" checked={s.activitiesService} onChange={e => handleUpdate(s.id, 'activitiesService', e.target.checked)} className="w-5 h-5 accent-blue-500" /> الخدمة
                                         </label>
                                         <div className="flex-1">
-                                            <textarea value={s.activitiesDiocese} onChange={e => handleUpdate(s.id, 'activitiesDiocese', e.target.value)} placeholder="نشاط الايبارشية..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-800 border border-slate-700 text-sm text-white outline-none focus:border-purple-500" />
+                                            <textarea value={s.activitiesDiocese || ''} onChange={e => handleUpdate(s.id, 'activitiesDiocese', e.target.value)} placeholder="نشاط الايبارشية..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-800 border border-slate-700 text-sm text-white outline-none focus:border-purple-500" />
                                         </div>
                                     </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs text-slate-400 mb-1">المهام / ملاحظات الخادم</label>
-                                    <textarea value={s.tasks} onChange={e => handleUpdate(s.id, 'tasks', e.target.value)} placeholder="اكتب ملاحظة..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-800 border border-slate-700 text-sm text-white outline-none mb-3" />
+                                    <textarea value={s.tasks || ''} onChange={e => handleUpdate(s.id, 'tasks', e.target.value)} placeholder="اكتب ملاحظة..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-800 border border-slate-700 text-sm text-white outline-none mb-3" />
                                 </div>
                                 <div className="bg-slate-800/80 p-3 rounded-xl border border-amber-500/20">
                                     <label className="block text-xs text-amber-500/80 font-bold mb-1">ملاحظات أمين الخدمة</label>
-                                    <textarea value={s.leaderNotes} onChange={e => handleUpdate(s.id, 'leaderNotes', e.target.value)} placeholder="ملاحظات خاصة بك كأمين أسرة..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-900 border border-amber-500/30 text-sm text-amber-100 placeholder-slate-500 outline-none focus:border-amber-500" />
+                                    <textarea value={s.leaderNotes || ''} onChange={e => handleUpdate(s.id, 'leaderNotes', e.target.value)} placeholder="ملاحظات خاصة بك كأمين أسرة..." className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-900 border border-amber-500/30 text-sm text-amber-100 placeholder-slate-500 outline-none focus:border-amber-500" />
                                 </div>
                             </div>
                         ))}

@@ -145,7 +145,7 @@ export default function SignUp() {
                                 onChange={(e) => setFormData({ ...formData, selectedService: e.target.value, selectedOsra: '' })}>
                                 <option value="">-- اختر الخدمة --</option>
                                 {services.map((srv, idx) => (
-                                    <option key={idx} value={srv.name}>{srv.name}</option>
+                                    <option key={idx} value={srv.name || ''}>{srv.name}</option>
                                 ))}
                             </select>
                         </div>
@@ -158,7 +158,7 @@ export default function SignUp() {
                                     onChange={(e) => setFormData({ ...formData, selectedOsra: e.target.value })}>
                                     <option value="">-- اختر الأسرة --</option>
                                     {services.find(s => s.name === formData.selectedService)?.osras.map((osra, idx) => (
-                                        <option key={idx} value={osra.name}>{osra.name}</option>
+                                        <option key={idx} value={osra.name || ''}>{osra.name}</option>
                                     ))}
                                 </select>
                             </div>

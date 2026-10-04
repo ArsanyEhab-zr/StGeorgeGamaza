@@ -34,6 +34,7 @@ import ScrollToTop from './components/ScrollToTop';
 // 🌟🌟🌟 استدعاءات نظام التحديث والإشعارات 🌟🌟🌟
 import BackButtonHandler from './components/BackButtonHandler';
 import NotificationManager from './components/NotificationManager';
+import GlobalSyncBadge from './components/GlobalSyncBadge';
 import { doc, getDoc, getDocFromServer } from 'firebase/firestore';
 import { firestore } from './db/firebase';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -238,6 +239,7 @@ function App() {
       <BackButtonHandler />
       <NotificationManager />
       <ScrollToTop />
+      <GlobalSyncBadge />
       
       {/* 🌟 Escape Hatch Banner for Super Admin */}
       {isSuperAdminImpersonating && (

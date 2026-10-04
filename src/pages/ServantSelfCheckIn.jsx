@@ -212,7 +212,7 @@ export default function ServantSelfCheckIn() {
                 <div className="mb-4 bg-slate-900 p-5 rounded-3xl border border-slate-800">
                     <label className="block text-sm font-black text-slate-300 mb-3">نشاط الايبارشية</label>
                     <textarea 
-                        value={record.activitiesDiocese}
+                        value={record.activitiesDiocese || ''}
                         onChange={e => handleUpdate('activitiesDiocese', e.target.value)}
                         placeholder="أدخل نشاط الايبارشية هنا..."
                         className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-600 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
@@ -223,7 +223,7 @@ export default function ServantSelfCheckIn() {
                 <div className="mb-8 bg-slate-900 p-5 rounded-3xl border border-slate-800">
                     <label className="block text-sm font-black text-slate-300 mb-3">المهام / الملاحظات (للإدارة)</label>
                     <textarea 
-                        value={record.tasks}
+                        value={record.tasks || ''}
                         onChange={e => handleUpdate('tasks', e.target.value)}
                         placeholder="لو عندك تعليق أو حاجة محتاج الإدارة تعرفها..."
                         className="resize-y min-h-[60px] p-2 w-full rounded bg-slate-950 border border-slate-800 text-sm text-white placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"

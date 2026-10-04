@@ -134,7 +134,12 @@ export default function Login() {
                 localStorage.setItem('currentServant', JSON.stringify(foundServant));
 
                 // توجيه الخادم للرئيسية
-                window.location.href = '/';
+                const isSuperAdmin = foundServant.syncKey === 'MASTER_ACCESS' || foundServant.syncKey === 'ADMIN_MODE' || foundServant.role === 'أدمن مساعد';
+                if (isSuperAdmin) {
+                    navigate('/master-dashboard');
+                } else {
+                    navigate('/');
+                }
             } else {
                 setError("بيانات الدخول غير صحيحة، أو الخادم غير مسجل.");
                 setIsLoading(false);

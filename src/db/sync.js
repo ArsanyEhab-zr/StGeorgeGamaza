@@ -52,6 +52,9 @@ const _syncDataWithCloud = async () => {
         let settingsUpdated = false;
 
         const isAdmin = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
+        const isStageAdmin = currentSyncKey === 'STAGE_ADMIN';
+        const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
+        const allowedClasses = currentServantObj.allowedClasses || [];
 
         // 🌟 2. سحب إعدادات الكنيسة والخدام (System Settings)
         const settingsRef = doc(firestore, 'System', 'mainConfig');
@@ -59,6 +62,41 @@ const _syncDataWithCloud = async () => {
         
         if (settingsSnap.exists()) {
             const cloudSettings = settingsSnap.data();
+            
+            // 🚨 SESSION VALIDATION: AUTO-LOGOUT DELETED USERS
+            const currentServantStr = localStorage.getItem('currentServant');
+            const currentSyncKey = localStorage.getItem('currentSyncKey');
+            
+            if (currentServantStr && currentSyncKey && currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE') {
+                const currentServant = JSON.parse(currentServantStr);
+                const role = currentServant.role || '';
+                
+                if (role !== 'Super Admin' && role !== 'أدمن النظام') {
+                    const servantsList = cloudSettings.servants || [];
+                    const isStillExists = servantsList.some(s => {
+                        if (currentServant.id && s.id) return s.id === currentServant.id;
+                        return s.phone === currentServant.phone && s.name === currentServant.name;
+                    });
+                    
+                    if (!isStillExists) {
+                        console.warn("🔴 User deleted from cloud. Forcing auto-logout.");
+                        localStorage.removeItem('currentServant');
+                        localStorage.removeItem('currentSyncKey');
+                        localStorage.removeItem('userPhone');
+                        
+                        await db.children.clear();
+                        await db.attendance.clear();
+                        await db.events.clear();
+                        await db.exams.clear();
+                        await db.grades.clear();
+                        
+                        window.location.href = '#/login';
+                        window.location.reload(); 
+                        return; // Halt sync
+                    }
+                }
+            }
+
             const localSettingsString = localStorage.getItem('appSettings');
             
             if (JSON.stringify(cloudSettings) !== localSettingsString) {
@@ -96,6 +134,21 @@ const _syncDataWithCloud = async () => {
             const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
             cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
             
+        } else if (isStageAdmin) {
+            if (allowedClasses.length > 0) {
+                const childrenSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'children'))));
+                cloudChildren = childrenSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
+
+                const attendanceSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'attendance'))));
+                cloudAttendance = attendanceSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
+
+                const eventsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'events'))));
+                const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
+                cloudEvents = [
+                    ...eventsSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean),
+                    ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
+                ];
+            }
         } else {
             const childrenSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'children'));
             cloudChildren = (childrenSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
@@ -126,8 +179,8 @@ const _syncDataWithCloud = async () => {
         try { for (const child of localChildren) {
             if (!child.isDirty) continue; // ✨ Skip clean records
             
-            const targetKey = isAdmin ? child.syncKey : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
+            const targetKey = (isAdmin || isStageAdmin) ? child.syncKey : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
 
             const docRef = doc(firestore, 'Osras', targetKey, 'children', child.id.toString());
 
@@ -150,8 +203,8 @@ const _syncDataWithCloud = async () => {
         try { for (const record of localAttendance) {
             if (!record.isDirty) continue; // ✨ Skip clean records
 
-            const targetKey = isAdmin ? record.syncKey : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
+            const targetKey = (isAdmin || isStageAdmin) ? record.syncKey : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
 
             const docId = `${record.date}_${record.childId}_${record.type}`;
             const docRef = doc(firestore, 'Osras', targetKey, 'attendance', docId);
@@ -175,9 +228,9 @@ const _syncDataWithCloud = async () => {
         try { for (const event of localEvents) {
             if (!event.isDirty) continue; // ✨ Skip clean records
 
-            let targetKey = isAdmin ? event.syncKey : currentSyncKey;
+            let targetKey = (isAdmin || isStageAdmin) ? event.syncKey : currentSyncKey;
             if (event.isGlobal) targetKey = 'global';
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
 
             const docRef = doc(firestore, 'Osras', targetKey, 'events', event.id.toString());
 
@@ -203,8 +256,8 @@ const _syncDataWithCloud = async () => {
         try { for (const exam of localExams) {
             if (!exam.isDirty) continue;
 
-            const targetKey = isAdmin ? (exam.syncKey || currentSyncKey) : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
+            const targetKey = (isAdmin || isStageAdmin) ? (exam.syncKey || currentSyncKey) : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
 
             const examFirebaseId = exam.firebaseId || exam.id.toString();
             const docRef = doc(firestore, 'Osras', targetKey, 'exams', examFirebaseId);
@@ -236,8 +289,8 @@ const _syncDataWithCloud = async () => {
         try { for (const grade of localGrades) {
             if (!grade.isDirty) continue;
 
-            const targetKey = isAdmin ? (grade.syncKey || currentSyncKey) : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE') continue;
+            const targetKey = (isAdmin || isStageAdmin) ? (grade.syncKey || currentSyncKey) : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
 
             if (!grade.examId) continue; // Safety: skip grades without examId
 
@@ -277,7 +330,7 @@ const _syncDataWithCloud = async () => {
             if (pushedChildrenIds.has(cloudChild.id)) continue; // Skip records we just pushed
             
             const localMatch = localChildrenMap.get(cloudChild.id);
-            const syncKeyToSave = isAdmin ? (cloudChild.syncKey || currentSyncKey) : currentSyncKey;
+            const syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudChild.syncKey || currentSyncKey) : currentSyncKey;
             const childToSave = { ...cloudChild, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudChild.updatedAt || now };
 
             if (!localMatch) {
@@ -298,7 +351,7 @@ const _syncDataWithCloud = async () => {
             if (pushedEventsIds.has(cloudEvent.id)) continue;
             
             const localMatch = localEventsMap.get(cloudEvent.id);
-            let syncKeyToSave = isAdmin ? (cloudEvent.syncKey || currentSyncKey) : currentSyncKey;
+            let syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudEvent.syncKey || currentSyncKey) : currentSyncKey;
             if (cloudEvent.isGlobal || cloudEvent.syncKey === 'global') syncKeyToSave = 'global';
             
             const eventToSave = { ...cloudEvent, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudEvent.updatedAt || now };
@@ -323,7 +376,7 @@ const _syncDataWithCloud = async () => {
             
             if (!localAttendanceMap.has(docId)) {
                 const { id: _id, ...dataToInsert } = cAtt;
-                const syncKeyToSave = isAdmin ? (dataToInsert.syncKey || currentSyncKey) : currentSyncKey;
+                const syncKeyToSave = (isAdmin || isStageAdmin) ? (dataToInsert.syncKey || currentSyncKey) : currentSyncKey;
                 await db.attendance.add({ ...dataToInsert, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
                 
                 const childInfo = await db.children.get(cAtt.childId);
@@ -341,6 +394,11 @@ const _syncDataWithCloud = async () => {
                 .filter(d => d.ref.parent.id === 'exams')
                 .map(d => ({ firebaseId: d.id, ...d.data() }))
                 .filter(Boolean);
+        } else if (isStageAdmin) {
+            if (allowedClasses.length > 0) {
+                const examsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'exams'))));
+                cloudExamsList = examsSnaps.flatMap(snap => (snap?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() }))).filter(Boolean);
+            }
         } else {
             const examsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'exams'));
             cloudExamsList = (examsSnapshot?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() })).filter(Boolean);
@@ -351,7 +409,7 @@ const _syncDataWithCloud = async () => {
             if (pushedExamIds.has(cloudExam.firebaseId)) continue;
 
             const localMatch = localExamsMap.get(cloudExam.firebaseId);
-            const syncKeyToSave = isAdmin ? (cloudExam.syncKey || currentSyncKey) : currentSyncKey;
+            const syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudExam.syncKey || currentSyncKey) : currentSyncKey;
             const examToSave = {
                 firebaseId: cloudExam.firebaseId,
                 examName: cloudExam.examName,
@@ -380,7 +438,7 @@ const _syncDataWithCloud = async () => {
         try { for (const cloudExam of cloudExamsList) {
             let cloudGradesDocs = [];
             try {
-                const gradesColRef = collection(firestore, 'Osras', isAdmin ? (cloudExam.syncKey || currentSyncKey) : currentSyncKey, 'exams', cloudExam.firebaseId, 'grades');
+                const gradesColRef = collection(firestore, 'Osras', (isAdmin || isStageAdmin) ? (cloudExam.syncKey || currentSyncKey) : currentSyncKey, 'exams', cloudExam.firebaseId, 'grades');
                 const gradesSnapshot = await getDocs(gradesColRef);
                 cloudGradesDocs = gradesSnapshot?.docs || [];
             } catch (_e) {
@@ -400,7 +458,7 @@ const _syncDataWithCloud = async () => {
                     g => g.examId === cloudExam.firebaseId && g.childId === gradeData.childId
                 );
 
-                const syncKeyToSave = isAdmin ? (gradeData.syncKey || currentSyncKey) : currentSyncKey;
+                const syncKeyToSave = (isAdmin || isStageAdmin) ? (gradeData.syncKey || currentSyncKey) : currentSyncKey;
                 const gradeToSave = {
                     childId: gradeData.childId,
                     grade: gradeData.grade,
@@ -479,6 +537,10 @@ export const syncDataWithCloud = async (retryCount = 0) => {
         return { success: false, message: "⚠️ لا يوجد اتصال بالإنترنت. يرجى المحاولة لاحقاً." };
     }
 
+    if (retryCount === 0) {
+        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
+    }
+
     try {
         // We race the entire Sync process against a hard 60-second timeout
         const syncTask = _syncDataWithCloud();
@@ -487,7 +549,15 @@ export const syncDataWithCloud = async (retryCount = 0) => {
             setTimeout(() => reject(new Error("NETWORK_TIMEOUT")), 60000)
         );
 
-        return await Promise.race([syncTask, timeoutTask]);
+        const result = await Promise.race([syncTask, timeoutTask]);
+        
+        if (result.success) {
+            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'success', time: Date.now() } }));
+        } else {
+            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
+        }
+        
+        return result;
 
     } catch (error) {
         if (error.message === "NETWORK_TIMEOUT") {
@@ -495,8 +565,10 @@ export const syncDataWithCloud = async (retryCount = 0) => {
                 console.log("⏱️ Sync timeout. Retrying gracefully...");
                 return await syncDataWithCloud(retryCount + 1);
             }
+            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
             return { success: false, message: "⏱️ انتهت مهلة الاتصال بالإنترنت أثناء الرفع. الرجاء التأكد من استقرار الشبكة." };
         }
+        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
         return { success: false, message: `حصلت مشكلة: ${error.message}` };
     }
 };

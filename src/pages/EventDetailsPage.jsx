@@ -177,15 +177,15 @@ export default function EventDetailsPage() {
                         <div className="space-y-4 animate-in fade-in">
                             <div>
                                 <label className="text-xs text-indigo-300 mb-1 block">اسم الحدث</label>
-                                <input className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" value={editData.title} onChange={e => setEditData({ ...editData, title: e.target.value })} />
+                                <input className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" value={editData.title || ''} onChange={e => setEditData({ ...editData, title: e.target.value })} />
                             </div>
                             <div>
                                 <label className="text-xs text-indigo-300 mb-1 block">التاريخ</label>
-                                <input type="date" className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" value={editData.date} onChange={e => setEditData({ ...editData, date: e.target.value })} />
+                                <input type="date" className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" value={editData.date || ''} onChange={e => setEditData({ ...editData, date: e.target.value })} />
                             </div>
                             <div>
                                 <label className="text-xs text-indigo-300 mb-1 block">السعر / التكلفة</label>
-                                <input className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" placeholder="مجانًا" value={editData.price} onChange={e => setEditData({ ...editData, price: e.target.value })} />
+                                <input className="w-full p-3 bg-slate-900/80 rounded-xl border border-indigo-500/50 outline-none text-white focus:border-indigo-400" placeholder="مجانًا" value={editData.price || ''} onChange={e => setEditData({ ...editData, price: e.target.value })} />
                             </div>
                         </div>
                     )}
@@ -237,7 +237,7 @@ export default function EventDetailsPage() {
                                 <div key={task.id} className="flex items-center gap-2 p-3 bg-slate-800/80 rounded-xl border border-indigo-500/30">
                                     <input
                                         className="flex-1 bg-transparent text-white outline-none text-sm font-bold"
-                                        value={task.title}
+                                        value={task.title || ''}
                                         onChange={e => handleUpdateEditTask(task.id, e.target.value)}
                                     />
                                     <button onClick={() => handleRemoveEditTask(task.id)} className="text-rose-400 hover:text-rose-300 p-1">
