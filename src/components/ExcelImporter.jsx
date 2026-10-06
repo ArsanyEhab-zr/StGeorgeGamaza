@@ -83,6 +83,7 @@ export default function ExcelImporter() {
                     const { bMonth, bDay } = parseArabicDate(rawBirthDate);
 
                     return {
+                        id: row.id || row.code || crypto.randomUUID(),
                         name: row["name"] || row["الاسم"],
                         motherPhone: String(row["motherPhone"] || row["تليفون الأم"] || ""),
                         fatherPhone: String(row["fatherPhone"] || row["تليفون الأب"] || ""),
@@ -111,17 +112,28 @@ export default function ExcelImporter() {
                 // تصفية السطور الفاضية
                 const validData = formattedData.filter(c => c.name);
 
-                for (const childData of validData) {
-                    const existingChild = existingChildren.find(c => c.name === childData.name);
-                    if (existingChild) {
-                        await db.children.update(existingChild.id, { ...childData, isDeleted: false });
-                    } else {
-                        await db.children.add(childData);
+                let successCount = 0;
+                let failCount = 0;
+
+                for (let i = 0; i < validData.length; i++) {
+                    const childData = validData[i];
+                    try {
+                        const existingChild = existingChildren.find(c => c.name === childData.name);
+                        if (existingChild) {
+                            // Retain the existing child's ID instead of overwriting it
+                            await db.children.update(existingChild.id, { ...childData, id: existingChild.id, isDeleted: false });
+                        } else {
+                            await db.children.add(childData);
+                        }
+                        successCount++;
+                    } catch (err) {
+                        console.error(`Failed to import row ${i + 1} (${childData.name}):`, err);
+                        failCount++;
                     }
                 }
 
                 triggerAutoSync();
-                alert(`مبروك! تم استيراد وتحديث ${validData.length} مخدوم بنجاح (بما فيها أعياد الميلاد)! 🎉`);
+                alert(`مبروك! تم استيراد وتحديث ${successCount} مخدوم بنجاح (بما فيها أعياد الميلاد)! 🎉` + (failCount > 0 ? `\n\nفشل استيراد ${failCount} صف. راجع الـ Console للتفاصيل.` : ''));
                 window.location.reload();
             } catch (err) {
                 console.error(err);
