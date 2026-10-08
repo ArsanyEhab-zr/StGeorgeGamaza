@@ -34,13 +34,14 @@ const _syncDataWithCloud = async () => {
         }
 
         // 🌟 تفاصيل العمليات (Detailed Logs)
-        let pushLog = { children: [], attendance: [], events: [], grades: [], exams: [] };
+        let pushLog = { children: [], attendance: [], events: [], grades: [], exams: [], activities: [] };
         let pullLog = { 
             childrenAdded: [], childrenUpdated: [], 
             attendanceAdded: [], 
             eventsAdded: [], eventsUpdated: [],
             gradesAdded: [], gradesUpdated: [],
-            examsAdded: [], examsUpdated: []
+            examsAdded: [], examsUpdated: [],
+            activitiesAdded: [], activitiesUpdated: []
         };
 
         let pushedChildrenIds = new Set();
@@ -48,6 +49,7 @@ const _syncDataWithCloud = async () => {
         let pushedEventsIds = new Set();
         let pushedGradeKeys = new Set();
         let pushedExamIds = new Set();
+        let pushedActivitiesIds = new Set();
 
         let settingsUpdated = false;
 
@@ -126,6 +128,7 @@ const _syncDataWithCloud = async () => {
         let cloudChildren = [];
         let cloudAttendance = [];
         let cloudEvents = [];
+        let cloudActivities = [];
 
         const processCloudDoc = (doc) => {
             const rawData = doc.data();
@@ -142,6 +145,9 @@ const _syncDataWithCloud = async () => {
             const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
             cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
             
+            const activitiesSnapshot = await getDocs(collectionGroup(firestore, 'activities'));
+            cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
+            
         } else if (isStageAdmin) {
             if (allowedClasses.length > 0) {
                 const childrenSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'children'))));
@@ -156,6 +162,9 @@ const _syncDataWithCloud = async () => {
                     ...eventsSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean),
                     ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
                 ];
+
+                const activitiesSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'activities'))));
+                cloudActivities = activitiesSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
             }
         } else {
             const childrenSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'children'));
@@ -171,6 +180,9 @@ const _syncDataWithCloud = async () => {
                 ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
             ];
             
+            const activitiesSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'activities'));
+            cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
+            
         }
 
         // تحويل داتا الكلاود لخرائط (Maps) عشان المقارنة تبقى بسرعة الصاروخ
@@ -182,6 +194,7 @@ const _syncDataWithCloud = async () => {
         const localChildren = (await db.children.toArray()) || [];
         const localAttendance = (await db.attendance.toArray()) || [];
         const localEvents = (await db.events.toArray()) || [];
+        const localActivities = (await db.activities.toArray()) || [];
 
         // 🚀🚀 5. الرفع للسحابة (Push) "بنظام isDirty" — نرفع الـ dirty بس 🚀🚀
         try { for (const child of localChildren) {
@@ -257,6 +270,30 @@ const _syncDataWithCloud = async () => {
             pushLog.events.push(event.title);
             pushedEventsIds.add(event.id);
         } } catch(e) { console.error('Error syncing events push:', e); }
+
+        try { for (const activity of localActivities) {
+            if (!activity.isDirty) continue;
+
+            const targetKey = (isAdmin || isStageAdmin) ? (activity.syncKey || currentSyncKey) : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
+
+            const docRef = doc(firestore, 'Osras', targetKey, 'activities', activity.id.toString());
+
+            // 🪦 Tombstone: soft-deleted activity
+            if (activity.isDeleted) {
+                try { await deleteDoc(docRef); } catch (_e) { /* ignore */ }
+                await db.activities.delete(activity.id);
+                pushLog.activities.push(`🗑️${activity.text.substring(0, 10)}`);
+                pushedActivitiesIds.add(activity.id);
+                continue;
+            }
+
+            const encryptedPayload = encryptData(cleanData({ ...activity, syncKey: targetKey, isDirty: false, isDeleted: false }));
+            await setDoc(docRef, { payload: encryptedPayload }, { merge: true });
+            await db.activities.update(activity.id, { isDirty: false, updatedAt: now });
+            pushLog.activities.push(activity.text.substring(0, 10));
+            pushedActivitiesIds.add(activity.id);
+        } } catch(e) { console.error('Error syncing activities push:', e); }
 
 
         // 📝 5b. رفع الامتحانات (Exams metadata push) — isDirty فقط
@@ -393,6 +430,27 @@ const _syncDataWithCloud = async () => {
             }
         } } catch(e) { console.error('Error syncing attendance pull:', e); }
 
+        const localActivitiesMap = new Map(localActivities.map(a => [a.id, a]));
+        try { for (const cloudActivity of cloudActivities) {
+            if (pushedActivitiesIds.has(cloudActivity.id)) continue;
+            
+            const localMatch = localActivitiesMap.get(cloudActivity.id);
+            const syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudActivity.syncKey || currentSyncKey) : currentSyncKey;
+            
+            const activityToSave = { ...cloudActivity, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudActivity.updatedAt || now };
+
+            if (!localMatch) {
+                pullLog.activitiesAdded.push(cloudActivity.text.substring(0, 10));
+                await db.activities.put(activityToSave);
+            } else {
+                const cloudUpdated = cloudActivity.updatedAt || '1970-01-01T00:00:00.000Z';
+                if (cloudUpdated > lastSyncTime && !localMatch.isDirty) {
+                    pullLog.activitiesUpdated.push(cloudActivity.text.substring(0, 10));
+                    await db.activities.put(activityToSave);
+                }
+            }
+        } } catch(e) { console.error('Error syncing activities pull:', e); }
+
         // 📝 6b. سحب الامتحانات (Exams metadata pull)
         let cloudExamsList = [];
         if (isAdmin) {
@@ -503,7 +561,7 @@ const _syncDataWithCloud = async () => {
 
         if (settingsUpdated) finalMessage += "⚙️ تم سحب تحديثات الهيكل المركزي.\n\n";
 
-        let hasPush = (pushLog.children?.length || 0) > 0 || (pushLog.attendance?.length || 0) > 0 || (pushLog.events?.length || 0) > 0 || (pushLog.grades?.length || 0) > 0 || (pushLog.exams?.length || 0) > 0;
+        let hasPush = (pushLog.children?.length || 0) > 0 || (pushLog.attendance?.length || 0) > 0 || (pushLog.events?.length || 0) > 0 || (pushLog.grades?.length || 0) > 0 || (pushLog.exams?.length || 0) > 0 || (pushLog.activities?.length || 0) > 0;
         if (hasPush) {
             finalMessage += `⬆️ تم الرفع للسحابة:\n`;
             if ((pushLog.children?.length || 0) > 0) finalMessage += `👦 مخدومين (${(pushLog.children?.length || 0)}): ${formatDetailedList(pushLog.children)}\n`;
@@ -511,10 +569,11 @@ const _syncDataWithCloud = async () => {
             if ((pushLog.events?.length || 0) > 0) finalMessage += `🏕️ أحداث (${(pushLog.events?.length || 0)}): ${formatDetailedList(pushLog.events)}\n`;
             if ((pushLog.exams?.length || 0) > 0) finalMessage += `📝 امتحانات (${(pushLog.exams?.length || 0)}): ${formatDetailedList(pushLog.exams)}\n`;
             if ((pushLog.grades?.length || 0) > 0) finalMessage += `🎓 درجات (${(pushLog.grades?.length || 0)}): ${formatDetailedList(pushLog.grades)}\n`;
+            if ((pushLog.activities?.length || 0) > 0) finalMessage += `🎯 أنشطة (${(pushLog.activities?.length || 0)}): ${formatDetailedList(pushLog.activities)}\n`;
             finalMessage += `\n`;
         }
 
-        let hasPull = (pullLog.childrenAdded?.length || 0) > 0 || (pullLog.childrenUpdated?.length || 0) > 0 || (pullLog.attendanceAdded?.length || 0) > 0 || (pullLog.eventsAdded?.length || 0) > 0 || (pullLog.eventsUpdated?.length || 0) > 0 || (pullLog.gradesAdded?.length || 0) > 0 || (pullLog.gradesUpdated?.length || 0) > 0 || (pullLog.examsAdded?.length || 0) > 0 || (pullLog.examsUpdated?.length || 0) > 0;
+        let hasPull = (pullLog.childrenAdded?.length || 0) > 0 || (pullLog.childrenUpdated?.length || 0) > 0 || (pullLog.attendanceAdded?.length || 0) > 0 || (pullLog.eventsAdded?.length || 0) > 0 || (pullLog.eventsUpdated?.length || 0) > 0 || (pullLog.gradesAdded?.length || 0) > 0 || (pullLog.gradesUpdated?.length || 0) > 0 || (pullLog.examsAdded?.length || 0) > 0 || (pullLog.examsUpdated?.length || 0) > 0 || (pullLog.activitiesAdded?.length || 0) > 0 || (pullLog.activitiesUpdated?.length || 0) > 0;
         if (hasPull) {
             finalMessage += `⬇️ تم الاستقبال من السحابة:\n`;
             if ((pullLog.childrenAdded?.length || 0) > 0) finalMessage += `➕ مخدومين جُداد (${(pullLog.childrenAdded?.length || 0)}): ${formatDetailedList(pullLog.childrenAdded)}\n`;
@@ -526,6 +585,8 @@ const _syncDataWithCloud = async () => {
             if ((pullLog.examsUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث امتحانات (${(pullLog.examsUpdated?.length || 0)}): ${formatDetailedList(pullLog.examsUpdated)}\n`;
             if ((pullLog.gradesAdded?.length || 0) > 0) finalMessage += `➕ درجات جديدة (${(pullLog.gradesAdded?.length || 0)}): ${formatDetailedList(pullLog.gradesAdded)}\n`;
             if ((pullLog.gradesUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث درجات (${(pullLog.gradesUpdated?.length || 0)}): ${formatDetailedList(pullLog.gradesUpdated)}\n`;
+            if ((pullLog.activitiesAdded?.length || 0) > 0) finalMessage += `➕ أنشطة جديدة (${(pullLog.activitiesAdded?.length || 0)}): ${formatDetailedList(pullLog.activitiesAdded)}\n`;
+            if ((pullLog.activitiesUpdated?.length || 0) > 0) finalMessage += `🔄 تحديث أنشطة (${(pullLog.activitiesUpdated?.length || 0)}): ${formatDetailedList(pullLog.activitiesUpdated)}\n`;
         }
 
         if (!hasPush && !hasPull && !settingsUpdated) {

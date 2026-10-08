@@ -13,7 +13,7 @@ import {
     BarChart3, Users, ArrowRight,
     ImagePlus, Loader2, Sparkles, BookOpen, UserPlus, Edit3, Trash2,
     Lock, Shirt, MapPin, DatabaseBackup, Save, FileSpreadsheet, ChevronRight, Phone, Search, Map, Calendar, Briefcase, StickyNote, Camera,
-    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer
+    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus
 } from 'lucide-react';
 import ExcelImporter from '../components/ExcelImporter';
 import useAutoSync from '../hooks/useAutoSync';
@@ -172,7 +172,7 @@ export default function Dashboard() {
                                 <p className="text-xs font-bold text-slate-300">
                                     {isMaster ? 'لوحة تحكم الأدمن' : currentView === 'menu' ? 'غرفة الإدارة' :
                                         currentView === 'stats' ? 'الإحصائيات والداتا' :
-                                            currentView === 'kids' ? 'مرايا المخدومين' : 'إخوة الرب'}
+                                            currentView === 'kids' ? 'مرايا المخدومين' : currentView === 'activities' ? 'متابعة أنشطة الأسرة' : 'إخوة الرب'}
                                 </p>
                             </div>
                         </div>
@@ -215,6 +215,14 @@ export default function Dashboard() {
                                     <p className="text-xs font-bold text-slate-500 mt-1">إضافة مخدومين، وتعديل كل البيانات الشاملة</p>
                                 </button>
                             )}
+                            
+                            {!isMaster && (
+                                <button onClick={() => setCurrentView('activities')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-emerald-50 hover:border-emerald-200 transition-all flex flex-col items-center text-center group">
+                                    <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><Target size={32} /></div>
+                                    <h2 className="text-xl font-black text-slate-800">متابعة أنشطة الأسرة</h2>
+                                    <p className="text-xs font-bold text-slate-500 mt-1">تسجيل ومتابعة الأنشطة المستهدفة والمنفذة للأسرة</p>
+                                </button>
+                            )}
 
 
                         </div>
@@ -234,6 +242,7 @@ export default function Dashboard() {
 
                 {currentView === 'stats' && <StatsView childrenData={children} appSettings={appSettings} />}
                 {currentView === 'kids' && !isMaster && <KidsManagerView childrenData={children} />}
+                {currentView === 'activities' && !isMaster && <ActivitiesView />}
 
 
             </main>
@@ -853,6 +862,154 @@ function KidsManagerView({ childrenData }) {
                         </div>
                     ))
                 )}
+            </div>
+        </div>
+    );
+}
+
+function ActivitiesView() {
+    const { triggerAutoSync } = useAutoSync();
+    const currentSyncKey = localStorage.getItem('currentSyncKey');
+    const activities = useLiveQuery(() => 
+        db.activities.filter(a => a.syncKey === currentSyncKey && !a.isDeleted).toArray()
+    ) || [];
+
+    const [newActivity, setNewActivity] = useState('');
+    const [newActivityType, setNewActivityType] = useState('targeted');
+
+    const targetedActivities = activities.filter(a => a.type === 'targeted');
+    const executedActivities = activities.filter(a => a.type === 'executed');
+
+    const handleAddActivity = async () => {
+        if (!newActivity.trim()) return;
+        const now = new Date().toISOString();
+        const newAct = {
+            id: Date.now().toString(),
+            syncKey: currentSyncKey,
+            text: newActivity.trim(),
+            type: newActivityType,
+            isDirty: true,
+            updatedAt: now,
+            isDeleted: false
+        };
+        await db.activities.add(newAct);
+        setNewActivity('');
+        triggerAutoSync();
+    };
+
+    const handleDeleteActivity = async (id) => {
+        if (!window.confirm("متأكد من مسح هذا النشاط؟")) return;
+        const now = new Date().toISOString();
+        await db.activities.update(id, { isDeleted: true, isDirty: true, updatedAt: now });
+        triggerAutoSync();
+    };
+
+    const handleMoveToExecuted = async (id) => {
+        const now = new Date().toISOString();
+        await db.activities.update(id, { type: 'executed', isDirty: true, updatedAt: now });
+        triggerAutoSync();
+    };
+
+    const handleEditActivity = async (id, oldText) => {
+        const newText = prompt("تعديل النشاط:", oldText);
+        if (newText && newText.trim() && newText.trim() !== oldText) {
+            const now = new Date().toISOString();
+            await db.activities.update(id, { text: newText.trim(), isDirty: true, updatedAt: now });
+            triggerAutoSync();
+        }
+    };
+
+    return (
+        <div className="animate-in slide-in-from-bottom-4 duration-300">
+            <div className="bg-white border border-slate-200 p-4 sm:p-6 rounded-3xl shadow-sm overflow-hidden">
+                <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                    <Target className="text-indigo-500" size={24} /> متابعة أنشطة الأسرة
+                </h3>
+
+                <div className="flex flex-col sm:flex-row gap-2 mb-6">
+                    <select 
+                        value={newActivityType} 
+                        onChange={(e) => setNewActivityType(e.target.value)}
+                        className="w-full sm:w-auto shrink-0 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none"
+                    >
+                        <option value="targeted">مستهدف</option>
+                        <option value="executed">منفذ</option>
+                    </select>
+                    <input 
+                        type="text" 
+                        placeholder="أضف نشاطاً جديداً للأسرة..." 
+                        value={newActivity} 
+                        onChange={(e) => setNewActivity(e.target.value)}
+                        className="w-full min-w-0 flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-indigo-500"
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddActivity()}
+                    />
+                    <button 
+                        onClick={handleAddActivity}
+                        className="w-full sm:w-auto shrink-0 bg-indigo-600 text-white px-6 py-3 rounded-xl font-black hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Plus size={20} /> إضافة
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Targeted */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                            <Target size={18} className="text-blue-500" /> الأنشطة المستهدفة للأسرة
+                        </h4>
+                        <div className="space-y-3">
+                            {targetedActivities.length === 0 ? (
+                                <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة مستهدفة.</p>
+                            ) : (
+                                targetedActivities.map(act => (
+                                    <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between gap-3 group">
+                                        <p className="text-sm font-bold text-slate-700 flex-1">{act.text}</p>
+                                        <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleMoveToExecuted(act.id)} className="w-8 h-8 rounded-lg bg-green-50 text-green-600 flex items-center justify-center hover:bg-green-100" title="نقل إلى المنفذ">
+                                                <CheckSquare size={16} />
+                                            </button>
+                                            <button onClick={() => handleEditActivity(act.id, act.text)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100">
+                                                <Edit3 size={14} />
+                                            </button>
+                                            <button onClick={() => handleDeleteActivity(act.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Executed */}
+                    <div className="bg-green-50/30 p-4 rounded-2xl border border-green-100">
+                        <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
+                            <CheckCircle size={18} className="text-green-500" /> الأنشطة المنفذة
+                        </h4>
+                        <div className="space-y-3">
+                            {executedActivities.length === 0 ? (
+                                <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة منفذة.</p>
+                            ) : (
+                                executedActivities.map(act => (
+                                    <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-green-200 flex items-center justify-between gap-3 group">
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <CheckCircle size={20} className="text-green-600 shrink-0" />
+                                            <p className="text-sm font-bold text-slate-800">{act.text}</p>
+                                        </div>
+                                        <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => handleEditActivity(act.id, act.text)} className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center hover:bg-blue-100">
+                                                <Edit3 size={14} />
+                                            </button>
+                                            <button onClick={() => handleDeleteActivity(act.id)} className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100">
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     );

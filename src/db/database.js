@@ -108,3 +108,14 @@ db.version(12).stores({
     grades: '++id, examId, examName, date, childId, grade, maxGrade, syncKey, isDirty, updatedAt, isDeleted',
     exams: '++id, firebaseId, syncKey, examName, maxGrade, date, isDirty, updatedAt, isDeleted'
 });
+
+// 📝 الإصدار 13: إضافة جدول أنشطة الخدمة (activities)
+db.version(13).stores({
+    children: 'id, name, syncKey, phone, childPhone, gender, streak, last_liturgy, last_service, last_visited, last_birthday_gift, last_reward_date, address, profilePic, isBrother, gotClothes, isDirty, updatedAt, isDeleted, massAttendance, preparation, serviceMeetingAttendance, visitationParticipation, lastConfessionDate, activityParticipation, medicalStatus',
+    servants: 'id, name, syncKey, phone, role, assignedStages, gender, streak, last_liturgy, last_service, last_visited, last_birthday_gift, address, profilePic, isDirty, updatedAt, isDeleted, massAttendance, preparation, serviceMeetingAttendance, visitationParticipation, lastConfessionDate, activityParticipation, medicalStatus',
+    attendance: '++id, date, childId, type, syncKey, status, isDirty, updatedAt, isDeleted',
+    events: 'id, syncKey, date, createdBy, isDirty, updatedAt, isDeleted',
+    grades: '++id, examId, examName, date, childId, grade, maxGrade, syncKey, isDirty, updatedAt, isDeleted',
+    exams: '++id, firebaseId, syncKey, examName, maxGrade, date, isDirty, updatedAt, isDeleted',
+    activities: 'id, syncKey, text, type, isDirty, updatedAt, isDeleted'
+});
