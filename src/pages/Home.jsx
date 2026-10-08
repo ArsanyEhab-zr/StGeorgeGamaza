@@ -20,20 +20,15 @@ export default function Home() {
     const [modalState, setModalState] = useState({ isOpen: false, type: null });
     const [showPastDatePicker, setShowPastDatePicker] = useState(false);
     const [pastDate, setPastDate] = useState('');
-    const [activities, setActivities] = useState({ targeted: [], executed: [] });
-
-    useEffect(() => {
-        const activitiesRef = doc(firestore, 'System', 'serviceActivities');
-        const unsubscribe = onSnapshot(activitiesRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setActivities(docSnap.data());
-            } else {
-                setActivities({ targeted: [], executed: [] });
-            }
-        });
-        return () => unsubscribe();
-    }, []);
     const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
+    
+    // 🌟 جلب أنشطة الأسرة من قاعدة البيانات المحلية (Dexie)
+    const activities = useLiveQuery(() => 
+        db.activities.filter(a => a.syncKey === currentSyncKey && !a.isDeleted).toArray()
+    ) || [];
+
+    const targetedActivities = activities.filter(a => a.type === 'targeted');
+    const executedActivities = activities.filter(a => a.type === 'executed');
 
     // 🌟 جلب بيانات الخادم من التخزين المحلي
     const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
@@ -627,24 +622,24 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* 🎯 متابعة أنشطة الخدمة (Read-Only) */}
+                {/* 🎯 متابعة أنشطة الأسرة (Read-Only) */}
                 {!isMaster && (
                     <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 mb-8">
                         <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-                            <Target className="text-indigo-500" size={24} /> متابعة أنشطة الخدمة
+                            <Target className="text-indigo-500" size={24} /> متابعة أنشطة الأسرة
                         </h3>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {/* Targeted */}
                             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                 <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
-                                    <Target size={18} className="text-blue-500" /> مستهدف
+                                    <Target size={18} className="text-blue-500" /> الأنشطة المستهدفة للأسرة
                                 </h4>
                                 <div className="space-y-3">
-                                    {(activities.targeted || []).length === 0 ? (
+                                    {targetedActivities.length === 0 ? (
                                         <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة مستهدفة.</p>
                                     ) : (
-                                        (activities.targeted || []).map(act => (
+                                        targetedActivities.map(act => (
                                             <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-slate-200">
                                                 <p className="text-sm font-bold text-slate-700">{act.text}</p>
                                             </div>
@@ -656,13 +651,13 @@ export default function Home() {
                             {/* Executed */}
                             <div className="bg-green-50/30 p-4 rounded-2xl border border-green-100">
                                 <h4 className="font-black text-slate-700 mb-4 flex items-center gap-2">
-                                    <CheckCircle size={18} className="text-green-500" /> تم تنفيذه
+                                    <CheckCircle size={18} className="text-green-500" /> الأنشطة المنفذة
                                 </h4>
                                 <div className="space-y-3">
-                                    {(activities.executed || []).length === 0 ? (
+                                    {executedActivities.length === 0 ? (
                                         <p className="text-xs text-slate-400 font-bold text-center">لا توجد أنشطة منفذة.</p>
                                     ) : (
-                                        (activities.executed || []).map(act => (
+                                        executedActivities.map(act => (
                                             <div key={act.id} className="bg-white p-3 rounded-xl shadow-sm border border-green-200 flex items-center gap-2">
                                                 <CheckCircle size={20} className="text-green-600 shrink-0" />
                                                 <p className="text-sm font-bold text-slate-800">{act.text}</p>
