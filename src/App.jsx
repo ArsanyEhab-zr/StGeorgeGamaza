@@ -25,6 +25,7 @@ const TrackingDashboards = lazy(() => import('./pages/TrackingDashboards'));
 const ServantsFollowUp = lazy(() => import('./pages/ServantsFollowUp'));
 const ServantsMonthlyReport = lazy(() => import('./pages/ServantsMonthlyReport'));
 const ServantSelfCheckIn = lazy(() => import('./pages/ServantSelfCheckIn'));
+const MasterActivityLogs = lazy(() => import('./pages/MasterActivityLogs'));
 
 
 import BottomNav from './components/BottomNav';
@@ -209,7 +210,8 @@ function App() {
   // الصفحات اللي مش عايزين الشريط يظهر فيها (زي اللوجين وصفحات المهام الكبيرة)
   const hideBottomNavPages = [
     '/dashboard', '/login', '/signup', '/admin', '/pdf-viewer', '/master-dashboard', '/info-directory',
-    '/calendar', '/add-event', '/parent-login', '/parent-dashboard', '/qr-scan', '/qr-attendance', '/generate-cards'
+    '/calendar', '/add-event', '/parent-login', '/parent-dashboard', '/qr-scan', '/qr-attendance', '/generate-cards',
+    '/master-logs', '/audit-logs'
   ];
   // بنعمل فحص إضافي عشان مسار الـ event اللي بياخد ID متغير (/event/123)
   const isEventDetailsPage = location.pathname.startsWith('/event/');
@@ -299,6 +301,8 @@ function App() {
           {/* صفحات عامة */}
           <Route path="/pdf-viewer" element={<PdfViewer />} />
           <Route path="/master-dashboard" element={<ServantProtectedRoute><MasterDashboard /></ServantProtectedRoute>} />
+          <Route path="/master-logs" element={<ServantProtectedRoute><MasterActivityLogs /></ServantProtectedRoute>} />
+          <Route path="/audit-logs" element={<ServantProtectedRoute><MasterActivityLogs /></ServantProtectedRoute>} />
         </Routes>
       </Suspense>
 

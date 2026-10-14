@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { Search, MapPin, ClipboardList, Navigation, MessageCircleWarning, CheckCircle2, Map, Crosshair, MapPinned, Loader2, AlertTriangle, Mic } from 'lucide-react';
 import BottomNav from '../components/BottomNav';
 import useAutoSync from '../hooks/useAutoSync';
+import { logActivity } from '../utils/activityLogger';
 
 export default function Visitation() {
     const { triggerAutoSync } = useAutoSync();
@@ -81,6 +82,7 @@ export default function Visitation() {
             const now = new Date().toISOString();
             await db.children.update(child.id, { last_visited: today, isDirty: true, updatedAt: now });
             triggerAutoSync();
+            logActivity('SAVE_NOTE', `تسجيل افتقاد للمخدوم: ${child.name || child.id} بتاريخ ${today}`);
             alert("تم الافتقاد بنجاح! ✅");
             setSelectedChildId(null);
         } catch (error) {
@@ -99,6 +101,7 @@ export default function Visitation() {
             await db.children.update(child.id, { gpsLink: googleMapsUrl, isDirty: true, updatedAt: now });
             triggerAutoSync();
             setIsLocating(false);
+            logActivity('UPDATE_CHILD', `حفظ موقع GPS للمخدوم: ${child.name || child.id}`);
             alert("تم حفظ اللوكيشن بنجاح! 📍");
         }, () => {
             setIsLocating(false);

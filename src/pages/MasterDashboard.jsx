@@ -7,10 +7,11 @@ import { db } from '../db/database';
 import { doc, getDoc, onSnapshot, setDoc, writeBatch, collectionGroup, getDocs, collection, deleteDoc } from 'firebase/firestore';
 import { encryptData, decryptData } from '../encryption';
 import { firestore } from '../db/firebase';
-import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3, ArrowLeftRight, ChevronDown } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3, ArrowLeftRight, ChevronDown, FileText } from 'lucide-react';
 import ExcelExporter from '../components/ExcelExporter';
 import useAutoSync from '../hooks/useAutoSync';
 import { TENANT_CONFIG } from '../config/tenantConfig';
+import { logActivity } from '../utils/activityLogger';
 
 export default function MasterDashboard() {
     const navigate = useNavigate();
@@ -221,6 +222,7 @@ export default function MasterDashboard() {
                 }
 
                 alert(`✅ تم ترحيل ${transferredCount} مخدوم بنجاح!`);
+                logActivity('TRANSFER_CHILDREN', `ترحيل ${transferredCount} مخدوم من ${allowedOsras.find(o => o.syncKey === transferSourceKey)?.name || transferSourceKey} إلى ${allowedOsras.find(o => o.syncKey === transferTargetKey)?.name || transferTargetKey}`);
                 setTransferSelectedIds(new Set());
                 setTransferSourceKey('');
                 setTransferTargetKey('');
@@ -342,6 +344,7 @@ export default function MasterDashboard() {
                     isDirty: true,
                     updatedAt: new Date().toISOString()
                 });
+                logActivity('RESOLVE_INTERVENTION', `حل طلب تدخل أبوي للمخدوم: ${childToUpdate.name || childId}`);
             }
         } catch (error) {
             console.error('Error resolving intervention:', error);
@@ -364,12 +367,46 @@ export default function MasterDashboard() {
                             </p>
                         </div>
                     </div>
+                    {(isSuperAdmin || isPriest) && (
+                        <button 
+                            onClick={() => navigate('/master-logs')}
+                            className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                            title="سجل النشاط المركزي"
+                        >
+                            <FileText size={16} className="text-amber-200" />
+                            <span className="hidden sm:inline">سجل النشاط</span>
+                        </button>
+                    )}
                 </div>
             </header>
 
             <main className="p-4 max-w-4xl mx-auto mt-4">
 
-
+                {/* 📋 زر الانتقال لسجل النشاط المركزي */}
+                {(isSuperAdmin || isPriest) && !selectedOsraKey && (
+                    <div className="mb-4 animate-in fade-in slide-in-from-top-3">
+                        <button
+                            onClick={() => navigate('/master-logs')}
+                            className="w-full p-4 rounded-2xl font-black text-slate-800 bg-white border border-amber-200/80 shadow-xs hover:shadow-md hover:border-amber-400 flex items-center justify-between gap-3 transition-all group"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
+                                    📋
+                                </div>
+                                <div className="text-right">
+                                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                                        سجل النشاط المركزي (Audit Trail)
+                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">جديد</span>
+                                    </h3>
+                                    <p className="text-[11px] font-bold text-slate-400 mt-0.5">مراقبة وتتبع جميع الإجراءات وتعديلات الخدام يومياً</p>
+                                </div>
+                            </div>
+                            <span className="text-xs font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 group-hover:bg-amber-500 group-hover:text-white transition-all">
+                                عرض السجل ←
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 {/* 🔄 أداة ترحيل المخدومين بين الفصول - Super Admin فقط */}
                 {isSuperAdmin && !selectedOsraKey && (
@@ -743,6 +780,7 @@ export default function MasterDashboard() {
                                                     const allKids = await db.children.toArray();
                                                     const updates = allKids.map(c => db.children.update(c.id, { streak: 0, last_liturgy: null, last_service: null, last_visited: null, isDirty: true, updatedAt: now }));
                                                     await Promise.all(updates);
+                                                    logActivity('GLOBAL_RESET', `تصفير عدادات جميع الفصول (${allKids.length} مخدوم)`);
                                                     triggerAutoSync();
                                                     alert("تم تصفير العدادات بنجاح لجميع الفصول! 🚀");
                                                 } catch (error) {
@@ -775,6 +813,7 @@ export default function MasterDashboard() {
                                                     const allAtt = await db.attendance.toArray();
                                                     await Promise.all(allAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now })));
                                                     
+                                                    logActivity('GLOBAL_WIPE', `مسح كامل لجميع الفصول (${allKids.length} مخدوم + ${allAtt.length} سجل حضور)`);
                                                     triggerAutoSync();
                                                     alert("تم مسح البيانات بالكامل لجميع الفصول! الأرض فاضية. 🧹");
                                                 } catch (error) {

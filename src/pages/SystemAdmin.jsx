@@ -12,6 +12,7 @@ import {
 // 🌟 استدعاءات الفايربيز
 import { collection, getDocs, doc, deleteDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
+import { logActivity } from '../utils/activityLogger';
 
 const getSettings = () => {
     const defaults = {
@@ -182,6 +183,7 @@ export default function SystemAdmin() {
                 servants: cleanServants
             });
             localStorage.removeItem('pendingStructureSync');
+            logActivity('SAVE_STRUCTURE', `حفظ هيكل الخدمة (${cleanServices.length} خدمة، ${cleanServants.length} خادم) ورفعه للسحابة`);
             alert("بوووووم! 💥 تم حفظ الهيكل ورفعه للسحابة بنجاح. أي أدمن تاني يقدر يسحبه دلوقتي!");
             navigate(-1);
         } catch (e) {

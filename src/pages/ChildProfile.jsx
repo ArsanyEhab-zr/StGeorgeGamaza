@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
 import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { logActivity } from '../utils/activityLogger';
 
 const ChildProfile = () => {
     const { triggerAutoSync } = useAutoSync();
@@ -46,6 +47,13 @@ const ChildProfile = () => {
         setIsInterventionRequired(false);
         
         triggerAutoSync();
+
+        // 📋 Audit Trail: تسجيل حفظ تقرير الافتقاد
+        const logDetails = isInterventionRequired
+            ? `إضافة تقرير افتقاد + طلب تدخل أبوي للمخدوم: ${child.name}`
+            : `إضافة تقرير افتقاد للمخدوم: ${child.name}`;
+        logActivity(isInterventionRequired ? 'SAVE_NOTE_WITH_INTERVENTION' : 'SAVE_NOTE', logDetails);
+
         alert('تم حفظ تقرير الافتقاد في ملف المخدوم بنجاح! ✅');
     };
 

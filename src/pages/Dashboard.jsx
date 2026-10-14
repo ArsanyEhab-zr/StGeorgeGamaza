@@ -18,6 +18,7 @@ import {
 import ExcelImporter from '../components/ExcelImporter';
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
+import { logActivity } from '../utils/activityLogger';
 
 const getSettings = () => {
     const defaults = {
@@ -397,6 +398,7 @@ function StatsView({ childrenData, appSettings }) {
                     const now = new Date().toISOString();
                     const updates = childrenData.map(c => db.children.update(c.id, { streak: 0, last_liturgy: null, last_service: null, last_visited: null, isDirty: true, updatedAt: now }));
                     await Promise.all(updates);
+                    logActivity('RESET_COUNTERS', `تصفير عدادات فصل: ${className} (${childrenData.length} مخدوم)`);
                     triggerAutoSync();
                     alert(`تم تصفير العدادات بنجاح لفصل ${className}! 🚀`);
                 } catch (error) {
@@ -424,6 +426,7 @@ function StatsView({ childrenData, appSettings }) {
                     const attUpdates = scopedAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now }));
                     await Promise.all(attUpdates);
                     
+                    logActivity('NUCLEAR_DELETE', `مسح كامل لبيانات فصل: ${className} (${childrenData.length} مخدوم + ${scopedAtt.length} سجل حضور)`);
                     triggerAutoSync();
                     alert(`تم تنظيف قاعدة بيانات ${className} بالكامل! الأرض فاضية. 🧹`);
                 } catch (error) {
@@ -650,6 +653,7 @@ function KidsManagerView({ childrenData }) {
         if (editingChild) {
             delete childDataToSave.id; // Strictly ensure ID cannot be updated
             await db.children.update(editingChild.id, childDataToSave);
+            logActivity('UPDATE_CHILD', `تعديل بيانات المخدوم: ${formChild.name || editingChild.name}`);
             setEditingChild(null);
         } else {
             const year = new Date().getFullYear();
@@ -658,6 +662,7 @@ function KidsManagerView({ childrenData }) {
             const newId = `${year}-${g}-${rand}`;
             
             await db.children.add({ ...childDataToSave, id: newId, streak: 0, gotClothes: false });
+            logActivity('ADD_CHILD', `إضافة مخدوم جديد: ${formChild.name}`);
             setIsAdding(false);
         }
         setFormChild(emptyChild);
@@ -668,7 +673,9 @@ function KidsManagerView({ childrenData }) {
     const handleDelete = async (id) => {
         if (window.confirm("متأكد إنك عايز تمسح المخدوم ده نهائياً؟")) {
             const now = new Date().toISOString();
+            const childToDelete = childrenData?.find(c => c.id === id);
             await db.children.update(id, { isDeleted: true, isDirty: true, updatedAt: now });
+            logActivity('DELETE_CHILD', `حذف المخدوم: ${childToDelete?.name || id}`);
             triggerAutoSync();
         }
     };

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import useQrScanner from '../hooks/useQrScanner';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
+import { logActivity } from '../utils/activityLogger';
 import {
     Camera, CameraOff, Trash2, ArrowRight, Volume2, VolumeX,
     RotateCcw, ScanLine, CheckCircle2, XCircle, X,
@@ -161,6 +162,10 @@ export default function QrAttendance() {
                 count: newChildIds.length,
                 message,
             });
+
+            // 📋 Audit Trail: تسجيل حضور جماعي بالـ QR
+            const typeLabel = type === 'liturgy' ? 'القداس' : 'الخدمة';
+            logActivity('RECORD_ATTENDANCE', `تسجيل حضور جماعي بـ QR — ${newChildIds.length} مخدوم (${typeLabel}) ليوم ${date}`);
 
         } catch (err) {
             console.error('❌ [QrAttendance] Save error:', err);

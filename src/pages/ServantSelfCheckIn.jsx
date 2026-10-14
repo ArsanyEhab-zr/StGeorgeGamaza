@@ -3,6 +3,7 @@ import { ArrowRight, UserCheck, CheckCircle2, Check, Church, BookOpen, MapPin, S
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 import { useNavigate } from 'react-router-dom';
+import { logActivity } from '../utils/activityLogger';
 
 export default function ServantSelfCheckIn() {
     const navigate = useNavigate();
@@ -88,6 +89,10 @@ export default function ServantSelfCheckIn() {
 
             await setDoc(docRef, cleanRecord, { merge: true });
             
+            // 📋 Audit Trail: تسجيل حضور خادم
+            const attendanceStatus = record.attendance === 'حضور' ? 'حاضر' : 'غائب';
+            logActivity('RECORD_ATTENDANCE', `تسجيل حضور خادم: ${record.name || 'خادم'} — ${attendanceStatus} ليوم ${record.date || docId}`);
+
             setIsSaving(false);
             setShowSuccess(true);
             setTimeout(() => {

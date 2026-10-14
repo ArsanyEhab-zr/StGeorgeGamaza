@@ -7,6 +7,7 @@ import { db } from '../db/database';
 import { Search, Church, BookOpen, CheckCheck, X, MessageCircleWarning, History, UserMinus, UserCheck, Calendar } from 'lucide-react';
 import useAutoSync from '../hooks/useAutoSync';
 import BottomNav from '../components/BottomNav';
+import { logActivity } from '../utils/activityLogger';
 
 export default function Attendance() {
     const { triggerAutoSync } = useAutoSync();
@@ -154,6 +155,11 @@ export default function Attendance() {
             
             await db.children.update(child.id, updates);
             triggerAutoSync();
+
+            // 📋 Audit Trail: تسجيل تغيير حالة الحضور
+            const statusLabels = { present: 'حاضر', absent: 'غائب', excused: 'بعذر' };
+            const typeLabels = { liturgy: 'القداس', service: 'الخدمة' };
+            logActivity('RECORD_ATTENDANCE', `تسجيل حضور المخدوم: ${child.name || child.id} — ${statusLabels[status] || status} (${typeLabels[type] || type}) ليوم ${selectedDate}`);
         } catch (err) {
             alert("عطل في قاعدة البيانات: " + err.message);
         }
