@@ -30,6 +30,31 @@ const ACTION_TYPE_MAP = {
 
 const getActionMeta = (actionType) => ACTION_TYPE_MAP[actionType] || { label: actionType, icon: '📌', color: 'bg-slate-100 text-slate-600 border-slate-200' };
 
+const cleanName = (n) => String(n || '').trim().replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+
+// Helper to extract timestamp in milliseconds for robust descending in-memory sorting
+const getLogTime = (log) => {
+    if (!log) return 0;
+    if (log.clientTimestamp) {
+        const t = new Date(log.clientTimestamp).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    if (log.timestamp?.toDate) {
+        try {
+            const t = log.timestamp.toDate().getTime();
+            if (!isNaN(t) && t > 0) return t;
+        } catch {}
+    }
+    if (log.timestamp?.seconds) {
+        return log.timestamp.seconds * 1000;
+    }
+    if (log.createdAt) {
+        const t = new Date(log.createdAt).getTime();
+        if (!isNaN(t) && t > 0) return t;
+    }
+    return 0;
+};
+
 const LOGS_PER_PAGE = 30;
 
 export default function MasterActivityLogs() {
@@ -156,57 +181,69 @@ export default function MasterActivityLogs() {
             let newLogs = [];
             let lastVisibleDoc = null;
 
-            try {
-                let constraints = [];
-
-                // Date filter
-                if (dateFilter) {
-                    constraints.push(where('dateKey', '==', dateFilter));
-                    constraints.push(orderBy('clientTimestamp', 'desc'));
-                } else {
-                    constraints.push(orderBy('clientTimestamp', 'desc'));
-                }
-
-                // Pagination
-                if (isLoadMore && lastDoc) {
-                    constraints.push(startAfter(lastDoc));
-                }
-
-                constraints.push(limit(LOGS_PER_PAGE));
-
-                const q = query(logsRef, ...constraints);
+            if (dateFilter) {
+                // 1. Single-field query by dateKey - NEVER requires composite index!
+                const q = query(
+                    logsRef,
+                    where('dateKey', '==', dateFilter),
+                    limit(300)
+                );
                 const snapshot = await getDocs(q);
-
                 newLogs = snapshot.docs.map(doc => ({
                     id: doc.id,
                     ...doc.data()
                 }));
-                lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1] || null;
-            } catch (queryErr) {
-                // Graceful fallback if composite index is pending/missing for (dateKey + orderBy clientTimestamp)
-                if (dateFilter && (queryErr.message?.includes('index') || queryErr.code === 'failed-precondition')) {
-                    console.warn('[ActivityLogs] Index missing, falling back to single-field query + client sort:', queryErr);
-                    const fallbackConstraints = [where('dateKey', '==', dateFilter), limit(100)];
-                    const qFallback = query(logsRef, ...fallbackConstraints);
-                    const snapshot = await getDocs(qFallback);
+                // Entire day is fetched in a single batch
+                lastVisibleDoc = null;
+            } else {
+                // 2. Base collection query for all dates
+                try {
+                    const constraints = [orderBy('clientTimestamp', 'desc')];
+                    if (isLoadMore && lastDoc) {
+                        constraints.push(startAfter(lastDoc));
+                    }
+                    constraints.push(limit(LOGS_PER_PAGE));
+                    const q = query(logsRef, ...constraints);
+                    const snapshot = await getDocs(q);
                     newLogs = snapshot.docs.map(doc => ({
                         id: doc.id,
                         ...doc.data()
-                    })).sort((a, b) => (b.clientTimestamp || '').localeCompare(a.clientTimestamp || ''));
-                    lastVisibleDoc = null;
-                } else {
-                    throw queryErr;
+                    }));
+                    lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1] || null;
+                } catch {
+                    // Safe fallback to simple collection query without orderBy
+                    const constraints = [limit(LOGS_PER_PAGE)];
+                    if (isLoadMore && lastDoc) {
+                        constraints.push(startAfter(lastDoc));
+                    }
+                    const q = query(logsRef, ...constraints);
+                    const snapshot = await getDocs(q);
+                    newLogs = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1] || null;
                 }
             }
 
+            // 3. Strictly in-memory sorting descending by timestamp / clientTimestamp / createdAt
+            newLogs.sort((a, b) => getLogTime(b) - getLogTime(a));
+
             if (isLoadMore) {
-                setLogs(prev => [...prev, ...newLogs]);
+                setLogs(prev => {
+                    const map = new Map();
+                    prev.forEach(item => map.set(item.id, item));
+                    newLogs.forEach(item => map.set(item.id, item));
+                    const combined = Array.from(map.values());
+                    combined.sort((a, b) => getLogTime(b) - getLogTime(a));
+                    return combined;
+                });
             } else {
                 setLogs(newLogs);
             }
 
             setLastDoc(lastVisibleDoc);
-            setHasMore(newLogs.length === LOGS_PER_PAGE && lastVisibleDoc !== null);
+            setHasMore(!dateFilter && newLogs.length === LOGS_PER_PAGE && lastVisibleDoc !== null);
         } catch (err) {
             console.error('[ActivityLogs] Fetch error:', err);
             setError(err.message);
@@ -226,7 +263,8 @@ export default function MasterActivityLogs() {
     const filteredLogs = useMemo(() => {
         let result = logs;
         if (servantFilter) {
-            result = result.filter(l => l.servantName === servantFilter);
+            const cleanTarget = cleanName(servantFilter);
+            result = result.filter(l => cleanName(l.servantName) === cleanTarget || l.servantName === servantFilter);
         }
         if (osraFilter) {
             result = result.filter(l => l.assignedOsra === osraFilter);
