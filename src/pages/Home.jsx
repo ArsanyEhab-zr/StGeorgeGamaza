@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import SmartAlerts from '../components/SmartAlerts';
-import { Settings, Users, MapPin, Gift, BookOpen, CalendarDays, Church, UserMinus, UserCheck, X, MessageCircleWarning, FileText, Crown, ArrowRight, Bell, Star, PhoneCall, Award, ChevronRight, QrCode, CreditCard, Target, CheckCircle } from 'lucide-react';
+import { Settings, Users, MapPin, Gift, BookOpen, CalendarDays, Church, UserMinus, UserCheck, User, X, MessageCircleWarning, FileText, Crown, ArrowRight, Bell, Star, PhoneCall, Award, ChevronRight, QrCode, CreditCard, Target, CheckCircle } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 import { LocalNotifications } from '@capacitor/local-notifications';
@@ -379,9 +379,21 @@ export default function Home() {
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2">
+                            <Link 
+                                to="/servant-profile" 
+                                aria-label="الملف الشخصي" 
+                                title="الملف الشخصي (بروفايلي)" 
+                                className="w-12 h-12 rounded-full ring-2 ring-indigo-500/20 hover:ring-indigo-500 text-indigo-700 flex justify-center items-center bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all shadow-sm overflow-hidden"
+                            >
+                                {currentServant.photoURL || currentServant.profileImage || currentServant.profilePic ? (
+                                    <img src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} alt={currentServant.name} className="w-full h-full object-cover" />
+                                ) : (
+                                    <User size={22} />
+                                )}
+                            </Link>
                             <Link to="/dashboard" aria-label="لوحة التحكم والإعدادات" className="w-12 h-12 rounded-full bg-slate-100 text-slate-600 flex justify-center items-center hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                                <Settings size={24} />
+                                <Settings size={22} />
                             </Link>
                         </div>
                     </div>

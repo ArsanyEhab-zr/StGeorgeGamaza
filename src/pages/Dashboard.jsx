@@ -13,12 +13,13 @@ import {
     BarChart3, Users, ArrowRight,
     ImagePlus, Loader2, Sparkles, BookOpen, UserPlus, Edit3, Trash2,
     Lock, Shirt, MapPin, DatabaseBackup, Save, FileSpreadsheet, ChevronRight, Phone, Search, Map, Calendar, Briefcase, StickyNote, Camera,
-    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus
+    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus, UserCircle
 } from 'lucide-react';
 import ExcelImporter from '../components/ExcelImporter';
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
+import { deleteChildRecord } from '../db/sync';
 
 const getSettings = () => {
     const defaults = {
@@ -185,6 +186,19 @@ export default function Dashboard() {
                 {currentView === 'menu' && (
                     <div className="animate-in fade-in zoom-in-95 duration-300">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* 🌟 بروفايل الخادم (الملف الشخصي) */}
+                            <Link to="/servant-profile" className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-indigo-50 hover:border-indigo-200 transition-all flex flex-col items-center text-center group">
+                                <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform overflow-hidden ring-2 ring-indigo-200 shadow-xs">
+                                    {currentServantObj?.photoURL || currentServantObj?.profileImage || currentServantObj?.profilePic ? (
+                                        <img src={currentServantObj.photoURL || currentServantObj.profileImage || currentServantObj.profilePic} alt="بروفايلي" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <UserCircle size={32} />
+                                    )}
+                                </div>
+                                <h2 className="text-xl font-black text-slate-800">الملف الشخصي (بروفايلي)</h2>
+                                <p className="text-xs font-bold text-slate-500 mt-1">تحديث الصورة الشخصية، العنوان، ومتابعة سجل الحضور</p>
+                            </Link>
+
                             <button onClick={() => setCurrentView('stats')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-indigo-50 hover:border-indigo-200 transition-all flex flex-col items-center text-center group">
                                 <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><BarChart3 size={32} /></div>
                                 <h2 className="text-xl font-black text-slate-800">الإحصائيات والداتا</h2>
@@ -425,6 +439,17 @@ function StatsView({ childrenData, appSettings }) {
                     const scopedAtt = allAtt.filter(a => childIds.includes(a.childId));
                     const attUpdates = scopedAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now }));
                     await Promise.all(attUpdates);
+
+                    // 🗑️ Direct Firestore delete for scoped children if online
+                    if (navigator.onLine && currentSyncKey && currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE' && currentSyncKey !== 'STAGE_ADMIN') {
+                        for (const c of childrenData) {
+                            try {
+                                const docRef = doc(firestore, 'Osras', currentSyncKey, 'children', String(c.id));
+                                await deleteDoc(docRef);
+                                await db.children.delete(c.id);
+                            } catch (_e) {}
+                        }
+                    }
                     
                     logActivity('NUCLEAR_DELETE', `مسح كامل لبيانات فصل: ${className} (${childrenData.length} مخدوم + ${scopedAtt.length} سجل حضور)`);
                     triggerAutoSync();
@@ -671,11 +696,14 @@ function KidsManagerView({ childrenData }) {
     };
 
     const handleDelete = async (id) => {
-        if (window.confirm("متأكد إنك عايز تمسح المخدوم ده نهائياً؟")) {
-            const now = new Date().toISOString();
-            const childToDelete = childrenData?.find(c => c.id === id);
-            await db.children.update(id, { isDeleted: true, isDirty: true, updatedAt: now });
-            logActivity('DELETE_CHILD', `حذف المخدوم: ${childToDelete?.name || id}`);
+        const childToDelete = childrenData?.find(c => c.id === id) || await db.children.get(id);
+        const childName = childToDelete?.name || id;
+        if (window.confirm(`متأكد إنك عايز تمسح المخدوم (${childName}) نهائياً؟`)) {
+            if (editingChild?.id === id) {
+                setEditingChild(null);
+                setFormChild(emptyChild);
+            }
+            await deleteChildRecord(id, childToDelete);
             triggerAutoSync();
         }
     };

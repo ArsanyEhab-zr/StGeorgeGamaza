@@ -1,5 +1,6 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import useNetworkStatus from './hooks/useNetworkStatus';
+import useChildrenRealtimeSync from './hooks/useChildrenRealtimeSync';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -26,6 +27,7 @@ const ServantsFollowUp = lazy(() => import('./pages/ServantsFollowUp'));
 const ServantsMonthlyReport = lazy(() => import('./pages/ServantsMonthlyReport'));
 const ServantSelfCheckIn = lazy(() => import('./pages/ServantSelfCheckIn'));
 const MasterActivityLogs = lazy(() => import('./pages/MasterActivityLogs'));
+const ServantProfile = lazy(() => import('./components/ServantProfile'));
 
 
 import BottomNav from './components/BottomNav';
@@ -203,6 +205,9 @@ function App() {
   // 🌐 Global network listener — auto-syncs when coming back online
   useNetworkStatus();
 
+  // ⚡ Real-time Firestore listener — propagates child deletions & changes instantly
+  useChildrenRealtimeSync();
+
   // السطر ده بيقرا هل الخادم مسجل دخول ولا لأ
   const isAuthenticated = !!localStorage.getItem('currentSyncKey');
 
@@ -211,7 +216,7 @@ function App() {
   const hideBottomNavPages = [
     '/dashboard', '/login', '/signup', '/admin', '/pdf-viewer', '/master-dashboard', '/info-directory',
     '/calendar', '/add-event', '/parent-login', '/parent-dashboard', '/qr-scan', '/qr-attendance', '/generate-cards',
-    '/master-logs', '/audit-logs'
+    '/master-logs', '/audit-logs', '/servant-profile', '/my-profile'
   ];
   // بنعمل فحص إضافي عشان مسار الـ event اللي بياخد ID متغير (/event/123)
   const isEventDetailsPage = location.pathname.startsWith('/event/');
@@ -272,6 +277,8 @@ function App() {
           <Route path="/info-directory" element={<ServantProtectedRoute><InfoDirectory /></ServantProtectedRoute>} />
 
           <Route path="/dashboard" element={<ServantProtectedRoute><Dashboard /></ServantProtectedRoute>} />
+          <Route path="/servant-profile" element={<ServantProtectedRoute><ServantProfile /></ServantProtectedRoute>} />
+          <Route path="/my-profile" element={<ServantProtectedRoute><ServantProfile /></ServantProtectedRoute>} />
           <Route path="/servant-checkin" element={<ServantProtectedRoute><ServantSelfCheckIn /></ServantProtectedRoute>} />
           <Route path="/profile/:id" element={<ServantProtectedRoute><ChildProfile /></ServantProtectedRoute>} />
           <Route path="/info/:id" element={<ServantProtectedRoute><ChildInfo /></ServantProtectedRoute>} />

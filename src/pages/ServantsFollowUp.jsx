@@ -22,6 +22,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, onSnapshot, query, where, setDoc, deleteDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
+import ServantProfile from '../components/ServantProfile';
 
 const cleanPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^0+/, '');
 const cleanName = (n) => String(n || '').trim().replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
@@ -30,6 +31,7 @@ export default function ServantsFollowUp() {
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const [selectedServantForProfile, setSelectedServantForProfile] = useState(null);
 
     const getOsraName = (key) => {
         if (!key || key === 'الكل') return key || "غير محدد";
@@ -633,15 +635,32 @@ export default function ServantsFollowUp() {
                                 {filteredServants.map(s => (
                                     <tr key={s.id} className="hover:bg-slate-800/80 transition-colors">
                                         <td className="p-2 text-center border-r border-slate-700">
-                                            {s.profileImage ? (
-                                                <img src={s.profileImage} alt={s.name} className="w-10 h-10 rounded-full mx-auto object-cover border-2 border-slate-600" />
-                                            ) : (
-                                                <div className="w-10 h-10 rounded-full mx-auto bg-slate-700 flex items-center justify-center text-slate-400">
-                                                    <span className="text-xs">{s.name.substring(0, 2)}</span>
-                                                </div>
-                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedServantForProfile(s)}
+                                                className="cursor-pointer hover:opacity-80 transition-opacity mx-auto block group"
+                                                title="عرض وتعديل بروفايل الخادم"
+                                            >
+                                                {s.profileImage ? (
+                                                    <img src={s.profileImage} alt={s.name} className="w-10 h-10 rounded-full mx-auto object-cover border-2 border-slate-600 group-hover:border-emerald-400 transition-colors" />
+                                                ) : (
+                                                    <div className="w-10 h-10 rounded-full mx-auto bg-slate-700 flex items-center justify-center text-slate-400 group-hover:border group-hover:border-emerald-400 transition-colors">
+                                                        <span className="text-xs">{s.name.substring(0, 2)}</span>
+                                                    </div>
+                                                )}
+                                            </button>
                                         </td>
-                                        <td className="p-4 font-black text-emerald-400">{s.name}</td>
+                                        <td className="p-4 font-black text-emerald-400">
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedServantForProfile(s)}
+                                                className="text-right hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-2 group"
+                                                title="عرض وتعديل بروفايل الخادم"
+                                            >
+                                                <span>{s.name}</span>
+                                                <Eye size={14} className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                                            </button>
+                                        </td>
                                         <td className="p-4 text-center">
                                             <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">
                                                 {getOsraName(s.osraName)}
@@ -708,7 +727,15 @@ export default function ServantsFollowUp() {
                         {filteredServants.map(s => (
                             <div key={s.id} className="bg-slate-900 border border-slate-700 p-4 rounded-2xl shadow-sm">
                                 <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-                                    <h3 className="font-black text-emerald-400 text-lg">{s.name}</h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedServantForProfile(s)}
+                                        className="font-black text-emerald-400 text-lg hover:underline text-right flex items-center gap-2"
+                                        title="عرض وتعديل بروفايل الخادم"
+                                    >
+                                        <span>{s.name}</span>
+                                        <Eye size={16} className="text-slate-400" />
+                                    </button>
                                     <select 
                                         value={s.attendance || ''} 
                                         onChange={e => handleUpdate(s.id, 'attendance', e.target.value)}
@@ -1012,6 +1039,17 @@ export default function ServantsFollowUp() {
                 </div>
 
             </main>
+
+            {/* 🌟 بروفايل الخادم (معاينة إدارية لأبونا / السوبر أدمن) 🌟 */}
+            {selectedServantForProfile && (
+                <ServantProfile 
+                    servantData={selectedServantForProfile}
+                    servant={selectedServantForProfile}
+                    isOpen={true}
+                    onClose={() => setSelectedServantForProfile(null)}
+                    isModal={true}
+                />
+            )}
         </div>
     );
 }

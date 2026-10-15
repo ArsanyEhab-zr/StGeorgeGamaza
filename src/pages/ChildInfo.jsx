@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
-import { ArrowRight, Phone, MapPin, ClipboardList, Briefcase, Calendar, Info, Map, AlertTriangle, PartyPopper } from 'lucide-react';
+import { ArrowRight, Phone, MapPin, ClipboardList, Briefcase, Calendar, Info, Map, AlertTriangle, PartyPopper, Trash2 } from 'lucide-react';
+import { deleteChildRecord } from '../db/sync';
 
 export default function ChildInfo() {
     const { id } = useParams();
@@ -22,6 +23,14 @@ export default function ChildInfo() {
         if (childId) return db.children.get(childId);
         return null;
     }, [childId]);
+
+    const handleDeleteChild = async () => {
+        if (!child) return;
+        if (window.confirm(`متأكد إنك عايز تمسح المخدوم (${child.name}) نهائياً؟`)) {
+            await deleteChildRecord(childId, child);
+            navigate(-1);
+        }
+    };
 
     // لو مفيش ID مبعوت من الأساس
     if (!childId) {
@@ -95,9 +104,18 @@ export default function ChildInfo() {
                             </span>
                         </div>
                     </div>
-                    <button onClick={() => navigate(-1)} className="w-12 h-12 bg-slate-100 text-slate-600 rounded-full hover:bg-slate-200 transition-all shadow-sm flex items-center justify-center shrink-0">
-                        <ArrowRight size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleDeleteChild} 
+                            title="حذف المخدوم نهائياً" 
+                            className="w-12 h-12 bg-red-50 text-red-600 rounded-full hover:bg-red-600 hover:text-white transition-all shadow-sm flex items-center justify-center shrink-0"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                        <button onClick={() => navigate(-1)} aria-label="الرجوع للخلف" className="w-12 h-12 bg-slate-100 text-slate-600 rounded-full hover:bg-slate-200 transition-all shadow-sm flex items-center justify-center shrink-0">
+                            <ArrowRight size={20} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* ─── 📋 بطاقة البيانات الشاملة ─── */}

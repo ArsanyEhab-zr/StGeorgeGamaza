@@ -3,8 +3,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
-import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { logActivity } from '../utils/activityLogger';
+import { deleteChildRecord } from '../db/sync';
 
 const ChildProfile = () => {
     const { triggerAutoSync } = useAutoSync();
@@ -16,6 +17,14 @@ const ChildProfile = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [aiSummary, setAiSummary] = useState('');
     const [isInterventionRequired, setIsInterventionRequired] = useState(false);
+
+    const handleDeleteChild = async () => {
+        if (!child) return;
+        if (window.confirm(`متأكد إنك عايز تمسح المخدوم (${child.name}) نهائياً؟`)) {
+            await deleteChildRecord(childId, child);
+            navigate(-1);
+        }
+    };
 
     const saveNote = async () => {
         if (!aiSummary || isSaving) return;
@@ -90,9 +99,18 @@ const ChildProfile = () => {
                             </div>
                         </div>
                     </div>
-                    <button onClick={() => navigate(-1)} aria-label="الرجوع للخلف" className="flex items-center justify-center w-12 h-12 bg-slate-100 text-slate-600 rounded-full hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
-                        <ArrowRight size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleDeleteChild} 
+                            title="حذف المخدوم نهائياً" 
+                            className="flex items-center justify-center w-12 h-12 bg-red-50 text-red-600 rounded-full hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                        >
+                            <Trash2 size={20} />
+                        </button>
+                        <button onClick={() => navigate(-1)} aria-label="الرجوع للخلف" className="flex items-center justify-center w-12 h-12 bg-slate-100 text-slate-600 rounded-full hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                            <ArrowRight size={20} />
+                        </button>
+                    </div>
                 </div>
 
 

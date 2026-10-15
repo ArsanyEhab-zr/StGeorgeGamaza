@@ -4,6 +4,7 @@ import { collection, collectionGroup, getDocs, doc, setDoc, deleteDoc, getDoc } 
 
 // 🌟 استدعاء دوال التشفير وفك التشفير اللي عملناهم
 import { encryptData, decryptData } from '../encryption';
+import { logActivity } from '../utils/activityLogger';
 
 // 🧹 فلتر سحري لتنظيف الداتا (أسرع من السرياليزيشن)
 const cleanData = (obj) => {
@@ -200,8 +201,14 @@ const _syncDataWithCloud = async () => {
         try { for (const child of localChildren) {
             if (!child.isDirty) continue; // ✨ Skip clean records
             
-            const targetKey = (isAdmin || isStageAdmin) ? child.syncKey : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
+            let targetKey = (isAdmin || isStageAdmin) ? (child.syncKey || currentSyncKey) : currentSyncKey;
+            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') {
+                if (child.syncKey && child.syncKey !== 'MASTER_ACCESS' && child.syncKey !== 'ADMIN_MODE' && child.syncKey !== 'STAGE_ADMIN') {
+                    targetKey = child.syncKey;
+                } else {
+                    continue;
+                }
+            }
 
             const docRef = doc(firestore, 'Osras', targetKey, 'children', child.id.toString());
 
@@ -374,6 +381,12 @@ const _syncDataWithCloud = async () => {
         try { for (const cloudChild of cloudChildren) {
             if (pushedChildrenIds.has(cloudChild.id)) continue; // Skip records we just pushed
             
+            // 🪦 If cloud record has tombstone (isDeleted: true), purge locally
+            if (cloudChild.isDeleted) {
+                await db.children.delete(cloudChild.id);
+                continue;
+            }
+
             const localMatch = localChildrenMap.get(cloudChild.id);
             const syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudChild.syncKey || currentSyncKey) : currentSyncKey;
             const childToSave = { ...cloudChild, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudChild.updatedAt || now };
@@ -390,6 +403,32 @@ const _syncDataWithCloud = async () => {
                 }
             }
         } } catch(e) { console.error('Error syncing children pull:', e); }
+
+        // 🪦 6a. حذف المخدومين المحذوفين على السحابة من قاعدة البيانات المحلية (Dexie)
+        try {
+            const cloudChildrenIdSet = new Set(cloudChildren.map(c => String(c.id)));
+            const syncedSyncKeys = isAdmin ? null : (isStageAdmin ? new Set(allowedClasses.map(String)) : new Set([String(currentSyncKey)]));
+
+            for (const localChild of localChildren) {
+                if (pushedChildrenIds.has(localChild.id)) continue;
+                if (localChild.isDirty) continue; // Don't purge unpushed offline creations
+
+                const belongsToSyncedScope = isAdmin || (localChild.syncKey && syncedSyncKeys.has(String(localChild.syncKey)));
+                if (!belongsToSyncedScope) continue;
+
+                const childIdStr = String(localChild.id);
+                if (!cloudChildrenIdSet.has(childIdStr)) {
+                    console.log(`🗑️ [Sync Pull] Pruning remotely deleted child locally: ${localChild.name} (${localChild.id})`);
+                    await db.children.delete(localChild.id);
+                    const numId = Number(localChild.id);
+                    if (!isNaN(numId)) {
+                        await db.children.delete(numId);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error reconciling deleted children during pull:', e);
+        }
 
         const localEventsMap = new Map(localEvents.map(e => [e.id, e]));
         try { for (const cloudEvent of cloudEvents) {
@@ -639,5 +678,77 @@ export const syncDataWithCloud = async (retryCount = 0) => {
         }
         window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
         return { success: false, message: `حصلت مشكلة: ${error.message}` };
+    }
+};
+
+/**
+ * 🗑️ Deletes a child from local Dexie DB and Firebase Firestore with full synchronization,
+ * tombstone cleanup, and activity logging for Master Logs audit trail.
+ *
+ * @param {string|number} childId - The ID of the child to delete.
+ * @param {object} [cachedChildData] - Optional cached child object.
+ * @returns {Promise<{ success: boolean, message: string }>}
+ */
+export const deleteChildRecord = async (childId, cachedChildData = null) => {
+    try {
+        const idStr = String(childId);
+        const now = new Date().toISOString();
+        const currentSyncKey = localStorage.getItem('currentSyncKey');
+        const child = cachedChildData || await db.children.get(childId) || await db.children.get(idStr);
+        const childName = child?.name || idStr;
+        let targetKey = child?.syncKey || (currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE' && currentSyncKey !== 'STAGE_ADMIN' ? currentSyncKey : null);
+        if ((!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') && child?.syncKey) {
+            targetKey = child.syncKey;
+        }
+
+        // 1. Soft-delete in Dexie immediately so UI updates instantly via useLiveQuery
+        try {
+            await db.children.update(childId, { isDeleted: true, isDirty: true, updatedAt: now });
+        } catch (_err) {
+            try { await db.children.update(idStr, { isDeleted: true, isDirty: true, updatedAt: now }); } catch (_e) {}
+        }
+
+        // 2. Also soft-delete attendance records for this child
+        try {
+            await db.attendance.where('childId').equals(childId).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+            if (childId !== idStr) {
+                await db.attendance.where('childId').equals(idStr).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+            }
+        } catch (_attErr) {
+            console.warn('Error soft-deleting attendance for child:', _attErr);
+        }
+
+        // 3. Log audit activity in Master Activity Logs
+        await logActivity('DELETE_CHILD', `حذف المخدوم: ${childName} (كود: ${idStr})`);
+
+        // 4. Direct Firestore deletion if online
+        let remoteDeleted = false;
+        if (navigator.onLine && targetKey && targetKey !== 'MASTER_ACCESS' && targetKey !== 'ADMIN_MODE' && targetKey !== 'STAGE_ADMIN') {
+            try {
+                const docRef = doc(firestore, 'Osras', targetKey, 'children', idStr);
+                await deleteDoc(docRef);
+                remoteDeleted = true;
+                console.log(`✅ [ChildSync] Direct Firebase deleteDoc succeeded for child: ${idStr}`);
+            } catch (err) {
+                console.warn('Direct Firebase deleteDoc failed, sync pipeline will retry:', err);
+            }
+        }
+
+        // 5. If remotely deleted successfully, purge locally from Dexie immediately
+        if (remoteDeleted) {
+            await db.children.delete(childId);
+            if (childId !== idStr) await db.children.delete(idStr);
+        }
+
+        // 6. Broadcast global sync event
+        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
+        setTimeout(() => {
+            syncDataWithCloud().catch(() => {});
+        }, 300);
+
+        return { success: true, message: `تم مسح المخدوم (${childName}) بنجاح.` };
+    } catch (error) {
+        console.error('Failed to delete child record:', error);
+        return { success: false, message: error.message };
     }
 };

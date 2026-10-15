@@ -15,6 +15,7 @@ const ACTION_TYPE_MAP = {
     'ADD_CHILD':                   { label: 'إضافة مخدوم',        icon: '➕', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
     'UPDATE_CHILD':                { label: 'تعديل بيانات مخدوم',  icon: '✏️', color: 'bg-blue-100 text-blue-700 border-blue-200' },
     'DELETE_CHILD':                { label: 'حذف مخدوم',          icon: '🗑️', color: 'bg-red-100 text-red-700 border-red-200' },
+    'UPDATE_SERVANT_PROFILE':      { label: 'تعديل بروفايل خادم', icon: '👤', color: 'bg-teal-100 text-teal-700 border-teal-200' },
     'SAVE_NOTE':                   { label: 'تقرير افتقاد',       icon: '📝', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
     'SAVE_NOTE_WITH_INTERVENTION': { label: 'طلب تدخل أبوي',   icon: '🚨', color: 'bg-amber-100 text-amber-700 border-amber-200' },
     'RESOLVE_INTERVENTION':        { label: 'حل تدخل أبوي',      icon: '✅', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
