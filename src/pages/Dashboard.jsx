@@ -243,6 +243,7 @@ export default function Dashboard() {
                                     onChange={(e) => {
                                         setActiveClassKey(e.target.value);
                                         sessionStorage.setItem('dashboard_activeClassKey', e.target.value);
+                                        window.dispatchEvent(new Event('syncKey-changed'));
                                     }}
                                     className="w-full sm:w-auto bg-indigo-50/70 border border-indigo-200 text-indigo-900 font-black text-xs rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
                                 >

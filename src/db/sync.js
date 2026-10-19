@@ -477,7 +477,7 @@ const _syncDataWithCloud = async () => {
             if (!localAttendanceMap.has(docId)) {
                 const { id: _id, ...dataToInsert } = cAtt;
                 const syncKeyToSave = (isAdmin || isStageAdmin) ? (dataToInsert.syncKey || currentSyncKey) : currentSyncKey;
-                await db.attendance.add({ ...dataToInsert, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
+                await db.attendance.put({ ...dataToInsert, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
                 
                 const childInfo = await db.children.get(cAtt.childId);
                 const kidName = childInfo ? childInfo.name.split(' ')[0] : 'مخدوم';
@@ -792,9 +792,15 @@ export const deleteChildRecord = async (childId, cachedChildData = null) => {
 
         // 2. Also soft-delete attendance & grades records for this child
         try {
-            await db.attendance.where('childId').equals(childId).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+            const atts1 = await db.attendance.where('childId').equals(childId).toArray();
+            for (const a of atts1) {
+                await db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now });
+            }
             if (childId !== idStr) {
-                await db.attendance.where('childId').equals(idStr).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+                const atts2 = await db.attendance.where('childId').equals(idStr).toArray();
+                for (const a of atts2) {
+                    await db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now });
+                }
             }
         } catch (_attErr) {
             console.warn('Error soft-deleting attendance for child:', _attErr);

@@ -289,18 +289,26 @@ export default function MasterDashboard() {
                         }
 
                         // Update attendance syncKey in Dexie
-                        await db.attendance.where('childId').equals(childId).modify({
-                            syncKey: transferTargetKey,
-                            isDirty: false,
-                            updatedAt: now
-                        });
-                        if (childId !== idStr) {
-                            await db.attendance.where('childId').equals(idStr).modify({
-                                syncKey: transferTargetKey,
-                                isDirty: false,
-                                updatedAt: now
-                            });
-                        }
+                        try {
+                            const childAtts = await db.attendance.where('childId').equals(childId).toArray();
+                            for (const a of childAtts) {
+                                await db.attendance.update(a.id, {
+                                    syncKey: transferTargetKey,
+                                    isDirty: false,
+                                    updatedAt: now
+                                });
+                            }
+                            if (childId !== idStr) {
+                                const idStrAtts = await db.attendance.where('childId').equals(idStr).toArray();
+                                for (const a of idStrAtts) {
+                                    await db.attendance.update(a.id, {
+                                        syncKey: transferTargetKey,
+                                        isDirty: false,
+                                        updatedAt: now
+                                    });
+                                }
+                            }
+                        } catch (_e) {}
 
                         // Update grades syncKey in Dexie
                         await db.grades.where('childId').equals(childId).modify({

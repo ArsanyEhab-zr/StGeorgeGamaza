@@ -38,7 +38,7 @@ import ScrollToTop from './components/ScrollToTop';
 import BackButtonHandler from './components/BackButtonHandler';
 import NotificationManager from './components/NotificationManager';
 import GlobalSyncBadge from './components/GlobalSyncBadge';
-import { doc, getDoc, getDocFromServer } from 'firebase/firestore';
+import { doc, getDoc, getDocFromServer, getDocFromCache } from 'firebase/firestore';
 import { firestore } from './db/firebase';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
@@ -113,18 +113,35 @@ function UpdateChecker({ children }) {
           return false;
         };
 
-        // 4. فحص الفايربيز بدون كاش (Live Check)
+        // 4. فحص الفايربيز بدون كاش (Live Check) مع دعم السقوط على الكاش عند عدم وجود اتصال
         const docRef = doc(firestore, "System", "AppConfig");
-        let docSnap;
-        try {
-            // محاولة جلب النسخة الحقيقية من السيرفر لتخطي النسخ المخبأة (Cache)
-            docSnap = await getDocFromServer(docRef);
-        } catch {
-            // لو مبقاش فيه نت قاطع هيستخدم الكاش القديم
-            docSnap = await getDoc(docRef);
+        let docSnap = null;
+
+        if (navigator.onLine) {
+            try {
+                // محاولة جلب النسخة الحقيقية من السيرفر لتخطي النسخ المخبأة (Cache)
+                docSnap = await getDocFromServer(docRef);
+            } catch {
+                try {
+                    docSnap = await getDoc(docRef);
+                } catch {
+                    try {
+                        docSnap = await getDocFromCache(docRef);
+                    } catch {
+                        // Document not in cache, ignore silently
+                    }
+                }
+            }
+        } else {
+            // أوفلاين: افحص الكاش مباشرة بدون إرسال طلبات فاشلة للشبكة
+            try {
+                docSnap = await getDocFromCache(docRef);
+            } catch {
+                // ليس بالكاش، تجاهل بدون خطأ
+            }
         }
 
-        if (docSnap.exists()) {
+        if (docSnap && docSnap.exists()) {
           const data = docSnap.data();
           // مقارنة دقيقة بدلاً من != العادية
           if (isNewVersionAvailable(CURRENT_APP_VERSION, data.latestVersion)) {
@@ -146,7 +163,14 @@ function UpdateChecker({ children }) {
           }
         }
       } catch (error) {
-        console.log("Offline or error checking updates:", error);
+        // تجاهل أخطاء الأوفلاين الشائعة بدون رسائل تحذير مزعجة في الكونسول
+        const isOffline = !navigator.onLine ||
+          error?.code === 'unavailable' ||
+          error?.message?.includes('offline') ||
+          error?.message?.includes('Failed to get document because the client is offline');
+        if (!isOffline) {
+          console.warn("Notice checking updates:", error?.message || error);
+        }
       }
     };
 

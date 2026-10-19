@@ -40,7 +40,8 @@ export const analytics = getAnalytics(app);
 // 4. 🌟 تشغيل وتصدير قاعدة البيانات بالاسمين عشان نرضي كل ملفات المشروع!
 // 🌟 تفعيل قاعدة البيانات الأوفلاين (Offline Persistence) كشرط أساسي للأداء باستخدام API الجديد
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache()
+  localCache: persistentLocalCache(),
+  experimentalAutoDetectLongPolling: true
 });
 
 export const firestore = db; // السطر ده هيخلي ملف sync.js يشتغل فوراً
