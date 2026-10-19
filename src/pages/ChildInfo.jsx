@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
-import { ArrowRight, Phone, MapPin, ClipboardList, Briefcase, Calendar, Info, Map, AlertTriangle, PartyPopper, Trash2 } from 'lucide-react';
+import { ArrowRight, Phone, MapPin, ClipboardList, Briefcase, Calendar, Info, Map, AlertTriangle, PartyPopper, Trash2, Camera, Loader2 } from 'lucide-react';
 import { deleteChildRecord } from '../db/sync';
+import { uploadImageWithFallback } from '../utils/cloudinary';
 
 export default function ChildInfo() {
     const { id } = useParams();
@@ -19,10 +20,34 @@ export default function ChildInfo() {
         triggerAutoSync();
     }, [triggerAutoSync]);
 
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
     const child = useLiveQuery(() => {
         if (childId) return db.children.get(childId);
         return null;
     }, [childId]);
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !child) return;
+        setIsUploadingPhoto(true);
+        try {
+            const secure_url = await uploadImageWithFallback(file, 'image');
+            const now = new Date().toISOString();
+            await db.children.update(childId, {
+                profilePic: secure_url,
+                isDirty: true,
+                updatedAt: now
+            });
+            triggerAutoSync();
+            alert('تم تحديث صورة المخدوم بنجاح! ✅');
+        } catch (err) {
+            console.error("Photo upload error:", err);
+            alert('فشل حفظ الصورة، حاول مرة أخرى.');
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
 
     const handleDeleteChild = async () => {
         if (!child) return;
@@ -94,8 +119,23 @@ export default function ChildInfo() {
                 {/* ─── Header ─── */}
                 <div className="flex items-center justify-between mb-6 bg-white/90 backdrop-blur-md p-5 rounded-[2.5rem] shadow-sm border border-slate-200">
                     <div className="flex items-center gap-4">
-                        <div className={`w-20 h-20 rounded-full bg-${themeColor}-100 flex items-center justify-center text-4xl shadow-inner overflow-hidden border-4 ${isBday ? 'border-yellow-400' : 'border-white'}`}>
-                            {child.profilePic ? <img src={child.profilePic} className="w-full h-full object-cover" alt={child.name} /> : (isGirl ? '👧' : '👦')}
+                        <div className="relative group">
+                            <div className={`w-20 h-20 rounded-full bg-${themeColor}-100 flex items-center justify-center text-4xl shadow-inner overflow-hidden border-4 ${isBday ? 'border-yellow-400' : 'border-white'}`}>
+                                {isUploadingPhoto ? (
+                                    <Loader2 className="animate-spin text-blue-600" size={24} />
+                                ) : child.profilePic ? (
+                                    <img 
+                                        src={child.profilePic} 
+                                        className="w-full h-full object-cover" 
+                                        alt={child.name} 
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                    />
+                                ) : (isGirl ? '👧' : '👦')}
+                            </div>
+                            <label className="absolute bottom-0 right-0 bg-blue-600 hover:bg-blue-700 text-white p-1.5 rounded-full cursor-pointer shadow-md transition-transform active:scale-95" title="تغيير الصورة">
+                                <Camera size={14} />
+                                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={isUploadingPhoto} />
+                            </label>
                         </div>
                         <div>
                             <h1 className="text-xl md:text-2xl font-black text-slate-800">{(!isGirl && child.isOrdained) ? (child.ordinationRank || 'شماس') + ' / ' : ''}{child.name}</h1>

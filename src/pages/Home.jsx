@@ -50,11 +50,16 @@ export default function Home() {
     }, []);
 
     // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
+    const allowedClasses = currentServant?.allowedClasses || [];
     const children = useLiveQuery(() => {
-        if (isMaster) return db.children.toArray();
+        if (currentSyncKey === 'STAGE_ADMIN') {
+            if (allowedClasses.length === 0) return [];
+            return db.children.where('syncKey').anyOf(allowedClasses).filter(c => !c.isDeleted).toArray();
+        }
+        if (isMaster) return db.children.filter(c => !c.isDeleted).toArray();
         if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray();
-    }, [currentSyncKey, isMaster]);
+        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray();
+    }, [currentSyncKey, isMaster, JSON.stringify(allowedClasses)]);
 
     // 🌟 عدد الأحداث العامة الغير مقروءة
     const unseenGlobalEventsCount = useLiveQuery(() => {
@@ -332,7 +337,16 @@ export default function Home() {
                             <div className="relative flex shrink-0">
                                 {!isMaster && (
                                     appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
-                                        <img src={appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} alt="لوجو الأسرة" width="44" height="44" loading="lazy" decoding="async" className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm z-10 bg-slate-100 object-cover" />
+                                        <img 
+                                            src={appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
+                                            alt="لوجو الأسرة" 
+                                            width="44" 
+                                            height="44" 
+                                            loading="lazy" 
+                                            decoding="async" 
+                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm z-10 bg-slate-100 object-cover" 
+                                        />
                                     ) : (
                                         <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm z-10 bg-indigo-100 flex items-center justify-center text-base sm:text-lg font-black text-indigo-600">
                                             {appSettings.osraName ? appSettings.osraName.charAt(0) : "أ"}
@@ -340,7 +354,16 @@ export default function Home() {
                                     )
                                 )}
                                 {appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO ? (
-                                    <img src={appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO} alt="لوجو الخدمة" width="44" height="44" loading="lazy" decoding="async" className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm bg-slate-100 object-cover ${!isMaster ? '-mr-4 sm:-mr-5' : ''}`} />
+                                    <img 
+                                        src={appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO} 
+                                        alt="لوجو الخدمة" 
+                                        width="44" 
+                                        height="44" 
+                                        loading="lazy" 
+                                        decoding="async" 
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm bg-slate-100 object-cover ${!isMaster ? '-mr-4 sm:-mr-5' : ''}`} 
+                                    />
                                 ) : (
                                     <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm bg-purple-100 flex items-center justify-center text-base sm:text-lg font-black text-purple-600 ${!isMaster ? '-mr-4 sm:-mr-5' : ''}`}>
                                         {appSettings.khedmaName ? appSettings.khedmaName.charAt(0) : "خ"}
@@ -369,7 +392,12 @@ export default function Home() {
                                 className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ring-2 ring-indigo-500/20 hover:ring-indigo-500 text-indigo-700 flex justify-center items-center bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all shadow-xs overflow-hidden active:scale-95"
                             >
                                 {currentServant.photoURL || currentServant.profileImage || currentServant.profilePic ? (
-                                    <img src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} alt={currentServant.name} className="w-full h-full object-cover" />
+                                    <img 
+                                        src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} 
+                                        alt={currentServant.name} 
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        className="w-full h-full object-cover" 
+                                    />
                                 ) : (
                                     <User size={18} />
                                 )}
@@ -460,7 +488,12 @@ export default function Home() {
                                 <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
                                     <div className="flex items-center gap-4 mb-5">
                                         {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
-                                            <img src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} alt={osra.name} className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm" />
+                                            <img 
+                                                src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
+                                                alt={osra.name} 
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm" 
+                                            />
                                         ) : (
                                             <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30">
                                                 {osra.name ? osra.name.charAt(0) : "ف"}

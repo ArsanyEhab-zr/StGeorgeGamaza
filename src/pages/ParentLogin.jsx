@@ -73,7 +73,9 @@ export default function ParentLogin() {
         setErrorMsg('');
         setIsLoading(true);
 
-        const cleanPhone = phoneNumber.trim().replace(/\D/g, '');
+        const rawInput = phoneNumber.trim();
+        const cleanPhone = rawInput.replace(/\D/g, '');
+        const normalizedInput = rawInput.toUpperCase();
 
         try {
             if (!navigator.onLine) {
@@ -109,20 +111,31 @@ export default function ParentLogin() {
                                              decrypted.osraName === selectedClass;
 
                         if (matchesClass) {
+                            const childIdStr = String(decrypted.id || docSnap.id || '').toUpperCase();
+                            const childCodeStr = String(decrypted.code || '').toUpperCase();
+
+                            // Check if matches structured child ID (e.g. 2026-B-xxxx or exact ID)
+                            const matchesId = normalizedInput.length >= 3 && (
+                                childIdStr === normalizedInput || 
+                                childCodeStr === normalizedInput || 
+                                childIdStr.endsWith(normalizedInput) ||
+                                childCodeStr.endsWith(normalizedInput)
+                            );
+
                             const legacyPhone = decrypted.phone ? String(decrypted.phone).trim().replace(/\D/g, '') : '';
                             const motherPhone = decrypted.motherPhone ? String(decrypted.motherPhone).trim().replace(/\D/g, '') : '';
                             const fatherPhone = decrypted.fatherPhone ? String(decrypted.fatherPhone).trim().replace(/\D/g, '') : '';
                             const personalPhone = decrypted.childPhone ? String(decrypted.childPhone).trim().replace(/\D/g, '') : '';
 
-                            const matchesPhone = cleanPhone &&
+                            const matchesPhone = cleanPhone.length >= 7 &&
                                 ((legacyPhone && legacyPhone.includes(cleanPhone)) ||
                                 (motherPhone && motherPhone.includes(cleanPhone)) ||
                                 (fatherPhone && fatherPhone.includes(cleanPhone)) ||
                                 (personalPhone && personalPhone.includes(cleanPhone)));
 
-                            if (matchesPhone) {
+                            if (matchesId || matchesPhone) {
                                 match = {
-                                    id: decrypted.id || docSnap.id,
+                                    id: String(decrypted.id || docSnap.id),
                                     name: decrypted.name,
                                     syncKey: childSyncKey,
                                     ...decrypted
@@ -136,14 +149,15 @@ export default function ParentLogin() {
 
             if (match) {
                 // 3. Save matching details to localStorage
-                localStorage.setItem('parentChildId', match.id);
+                localStorage.setItem('parentChildId', String(match.id));
                 localStorage.setItem('parentChildName', match.name);
                 localStorage.setItem('parentSyncKey', match.syncKey);
                 localStorage.setItem('parentClassName', selectedClass);
 
-                // 4. Save matching details and attendance locally to Dexie for offline dashboards
+                // 4. Save matching details locally to Dexie for offline dashboards
                 await db.children.put({
-                    id: parseInt(match.id, 10) || match.id,
+                    ...match,
+                    id: String(match.id),
                     name: match.name,
                     phone: match.phone || '',
                     motherPhone: match.motherPhone || '',
@@ -161,11 +175,11 @@ export default function ParentLogin() {
                         const data = docSnap.data();
                         if (data && data.payload) {
                             const record = decryptData(data.payload);
-                            if (record && parseInt(record.childId, 10) === parseInt(match.id, 10)) {
+                            if (record && String(record.childId) === String(match.id)) {
                                 localAttendanceRecords.push(record);
                             }
                         } else if (data) {
-                            if (data.childId === parseInt(match.id, 10)) {
+                            if (String(data.childId) === String(match.id)) {
                                 localAttendanceRecords.push(data);
                             }
                         }
@@ -177,10 +191,49 @@ export default function ParentLogin() {
                     console.error("Error fetching child attendance:", attErr);
                 }
 
+                // Fetch child's exams and grades from Firestore and save locally
+                try {
+                    const examsSnapshot = await getDocs(collection(firestore, 'Osras', match.syncKey, 'exams'));
+                    const localExams = [];
+                    for (const examDoc of examsSnapshot.docs) {
+                        const examData = examDoc.data();
+                        localExams.push({ id: examDoc.id, firebaseId: examDoc.id, syncKey: match.syncKey, ...examData });
+                        
+                        try {
+                            const gradeSnap = await getDocs(collection(firestore, 'Osras', match.syncKey, 'exams', examDoc.id, 'grades'));
+                            for (const gDoc of gradeSnap.docs) {
+                                const gData = gDoc.data();
+                                const decryptedGrade = gData.payload ? decryptData(gData.payload) : gData;
+                                if (decryptedGrade && String(decryptedGrade.childId) === String(match.id)) {
+                                    await db.grades.put({
+                                        id: `${examDoc.id}_${match.id}`,
+                                        examId: examDoc.id,
+                                        childId: String(match.id),
+                                        grade: decryptedGrade.grade,
+                                        maxGrade: examData.maxGrade,
+                                        examName: examData.examName,
+                                        date: examData.date,
+                                        syncKey: match.syncKey,
+                                        isDirty: false,
+                                        updatedAt: new Date().toISOString()
+                                    });
+                                }
+                            }
+                        } catch (gErr) {
+                            console.warn("Error fetching grade for exam:", examDoc.id, gErr);
+                        }
+                    }
+                    if (localExams.length > 0) {
+                        await db.exams.bulkPut(localExams);
+                    }
+                } catch (examErr) {
+                    console.warn("Error fetching exams:", examErr);
+                }
+
                 // Redirect to parent dashboard
                 navigate('/parent-dashboard');
             } else {
-                setErrorMsg('لم يتم العثور على مخدوم مسجل بهذا الرقم في هذا الفصل.');
+                setErrorMsg('لم يتم العثور على مخدوم مسجل بهذا الرقم أو الكود في هذا الفصل.');
             }
         } catch (error) {
             console.error(error);
@@ -226,14 +279,14 @@ export default function ParentLogin() {
                     </div>
 
                     <div className="space-y-1">
-                        <label className="text-xs font-bold text-slate-600 ml-1">رقم التليفون (المسجل) *</label>
+                        <label className="text-xs font-bold text-slate-600 ml-1">رقم التليفون أو كود المخدوم (2026-B-xxxx) *</label>
                         <div className="relative">
                             <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                             <input 
-                                type="tel" 
+                                type="text" 
                                 value={phoneNumber}
                                 onChange={(e) => setPhoneNumber(e.target.value)}
-                                placeholder="01xxxxxxxxx"
+                                placeholder="01xxxxxxxxx أو 2026-B-xxxx"
                                 className="w-full pl-10 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 required
                             />

@@ -108,19 +108,21 @@ export default function QrAttendance() {
             // ─── Atomic Transaction: Insert Attendance + Update Children ───
             await db.transaction('rw', db.attendance, db.children, async () => {
                 for (const childId of newChildIds) {
+                    const child = await db.children.get(childId);
+                    const targetSyncKey = child?.syncKey || currentSyncKey;
+
                     // 1. Insert attendance record
                     await db.attendance.add({
                         date,
                         childId,
                         type,
-                        syncKey: currentSyncKey,
+                        syncKey: targetSyncKey,
                         isDirty: true,
                         updatedAt: now,
                         isDeleted: false,
                     });
 
                     // 2. Update child record (streak + last_liturgy/last_service)
-                    const child = await db.children.get(childId);
                     if (child && !child.isDeleted) {
                         const field = type === 'liturgy' ? 'last_liturgy' : 'last_service';
                         const updates = {

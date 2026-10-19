@@ -15,14 +15,15 @@ export default function InfoDirectory() {
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
     const children = useLiveQuery(() => {
         if (isMaster) {
-            return searchQuery
-                ? db.children.where('name').startsWithIgnoreCase(searchQuery).toArray()
-                : db.children.toArray();
+            return db.children.filter(c => !c.isDeleted).toArray()
+                .then(arr => searchQuery
+                    ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                    : arr);
         }
         if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray()
+        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray()
             .then(arr => searchQuery
-                ? arr.filter(c => c.name?.toLowerCase().startsWith(searchQuery.toLowerCase()))
+                ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
                 : arr);
     }, [searchQuery, currentSyncKey, isMaster]);
 
@@ -149,7 +150,14 @@ export default function InfoDirectory() {
                                     {isBday && <div className="absolute top-0 left-0 w-full h-1.5 bg-linear-to-r from-yellow-400 via-pink-500 to-yellow-400 animate-pulse"></div>}
 
                                     <div className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl overflow-hidden shadow-inner ${isBday ? 'bg-yellow-200 border-2 border-yellow-400' : 'bg-slate-100'}`}>
-                                        {child.profilePic ? <img src={child.profilePic} className="object-cover w-full h-full" alt={child.name} /> : (child.gender === 'بنت' ? '👧' : '👦')}
+                                        {child.profilePic ? (
+                                            <img 
+                                                src={child.profilePic} 
+                                                className="object-cover w-full h-full" 
+                                                alt={child.name} 
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            />
+                                        ) : (child.gender === 'بنت' ? '👧' : '👦')}
                                     </div>
 
                                     <div className="flex-1">

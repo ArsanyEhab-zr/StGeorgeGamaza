@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 
+const cleanPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^0+/, '');
+const cleanName = (n) => String(n || '').trim().replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+
 export default function ServantsMonthlyReport() {
     const navigate = useNavigate();
     
@@ -87,6 +90,22 @@ export default function ServantsMonthlyReport() {
                     filteredServants = filteredServants.filter(s => s.osraName === osraFilter);
                 }
 
+                // Build aliasMap to resolve self-check-ins and alternative IDs
+                const aliasMap = {};
+                try {
+                    const servantsSnap = await getDocs(collection(firestore, "servants"));
+                    servantsSnap.forEach(docSnap => {
+                        const d = docSnap.data();
+                        const p = cleanPhone(d.phone);
+                        if (p) {
+                            aliasMap[docSnap.id] = p;
+                            if (d.uid) aliasMap[d.uid] = p;
+                        }
+                    });
+                } catch (e) {
+                    console.warn("Error fetching servants aliases:", e);
+                }
+
                 // 2. Fetch attendance
                 let attendanceSnap;
                 if (viewMode === 'monthly') {
@@ -103,9 +122,26 @@ export default function ServantsMonthlyReport() {
                 const attendanceByServant = {};
                 attendanceSnap.forEach(d => {
                     const data = d.data();
-                    const sId = data.uid || data.phone;
-                    if (!attendanceByServant[sId]) attendanceByServant[sId] = [];
-                    attendanceByServant[sId].push(data);
+                    if (!data) return;
+                    const docIdSuffix = d.id.includes('_') ? d.id.split('_').slice(1).join('_') : d.id;
+                    const cleanDPhone = cleanPhone(data.phone || data.uid || docIdSuffix);
+                    const cleanDName = cleanName(data.name);
+                    const aliasPhone = aliasMap[data.uid] || aliasMap[docIdSuffix];
+
+                    const matchedServant = filteredServants.find(s => {
+                        if (s.uid && (data.uid === s.uid || docIdSuffix === s.uid)) return true;
+                        if (s.id && (String(data.id) === String(s.id) || String(data.uid) === String(s.id))) return true;
+                        const sPhone = cleanPhone(s.phone);
+                        if (sPhone && (cleanDPhone === sPhone || (aliasPhone && sPhone === aliasPhone))) return true;
+                        if (s.name && data.name && cleanName(s.name) === cleanDName) return true;
+                        return false;
+                    });
+
+                    if (matchedServant) {
+                        const sKey = String(matchedServant.id || matchedServant.uid || matchedServant.phone || matchedServant.name);
+                        if (!attendanceByServant[sKey]) attendanceByServant[sKey] = [];
+                        attendanceByServant[sKey].push(data);
+                    }
                 });
 
                 // 3. Aggregate data
@@ -113,8 +149,8 @@ export default function ServantsMonthlyReport() {
                 const totalWeeks = allWeekDates.length > 0 ? allWeekDates.length : (viewMode === 'monthly' ? 4 : 52);
 
                 const aggregatedData = filteredServants.map((s, idx) => {
-                    const sId = s.uid || s.phone;
-                    const records = attendanceByServant[sId] || [];
+                    const sKey = String(s.id || s.uid || s.phone || s.name);
+                    const records = attendanceByServant[sKey] || [];
                     records.sort((a, b) => a.weekDate.localeCompare(b.weekDate)); // Sort oldest to newest
 
                     let attendanceArr = ['-', '-', '-', '-', '-'];

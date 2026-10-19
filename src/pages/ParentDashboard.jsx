@@ -6,6 +6,7 @@ import { firestore } from '../db/firebase';
 import { doc, collection, collectionGroup, query, where, onSnapshot } from 'firebase/firestore';
 import { decryptData } from '../encryption';
 import { TENANT_CONFIG } from '../config/tenantConfig';
+import { db } from '../db/database';
 
 export default function ParentDashboard() {
     const navigate = useNavigate();
@@ -21,7 +22,32 @@ export default function ParentDashboard() {
     useEffect(() => {
         if (!childId) {
             navigate('/parent-login');
+            return;
         }
+
+        // Offline-first: Load child, attendance, and grades from Dexie immediately
+        const loadLocal = async () => {
+            try {
+                const localChild = await db.children.get(childId);
+                if (localChild) setChildInfo(prev => prev || localChild);
+
+                const localAtt = await db.attendance.where('childId').equals(childId).toArray();
+                if (localAtt && localAtt.length > 0) setAttendance(prev => prev.length > 0 ? prev : localAtt);
+
+                const localGrades = await db.grades.where('childId').equals(childId).toArray();
+                if (localGrades && localGrades.length > 0) {
+                    setGrades(prev => prev.length > 0 ? prev : localGrades.map(g => ({
+                        examName: g.examName,
+                        date: g.date,
+                        grade: g.grade,
+                        maxGrade: g.maxGrade
+                    })));
+                }
+            } catch (err) {
+                console.warn("[ParentDashboard] Dexie offline load error:", err);
+            }
+        };
+        loadLocal();
     }, [childId, navigate]);
 
     useEffect(() => {
@@ -188,6 +214,7 @@ export default function ParentDashboard() {
                                 <img 
                                     src={childImg} 
                                     alt={displayName} 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                     className="w-full h-full object-cover"
                                 />
                             ) : (

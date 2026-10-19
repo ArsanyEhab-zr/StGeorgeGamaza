@@ -107,6 +107,21 @@ export default function MasterDashboard() {
             }
         };
         autoFetchStructure();
+
+        // 🔄 Live Listener: Re-sync servant data & structure when a profile is updated anywhere
+        const handleProfileUpdate = () => {
+            try {
+                const freshSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
+                setAppSettings(freshSettings);
+            } catch (_e) {}
+        };
+        window.addEventListener('servant-profile-updated', handleProfileUpdate);
+        window.addEventListener('storage', handleProfileUpdate);
+
+        return () => {
+            window.removeEventListener('servant-profile-updated', handleProfileUpdate);
+            window.removeEventListener('storage', handleProfileUpdate);
+        };
     }, [hasAccess]);
 
     const cleanPhoneForWhatsapp = (phone) => {
@@ -170,39 +185,81 @@ export default function MasterDashboard() {
             alert('⚠️ فصل المصدر والوجهة متطابقان! اختر فصلًا مختلفًا.');
             return;
         }
-        if (!window.confirm(`هل تريد ترحيل ${transferSelectedIds.size} مخدوم من الفصل المصدر إلى الفصل الجديد؟ هذه العملية ستنقل بياناتهم بالكامل.`)) return;
+        if (!window.confirm(`هل تريد ترحيل ${transferSelectedIds.size} مخدوم من الفصل المصدر إلى الفصل الجديد؟ هذه العملية ستنقل بياناتهم بالكامل وتحدث سجلاتهم.`)) return;
 
         setIsTransferring(true);
         try {
             const batch = writeBatch(firestore);
             let transferredCount = 0;
+            const now = new Date().toISOString();
+
+            // Fetch source attendance once to batch migrate if needed
+            let sourceAttendanceDocs = [];
+            try {
+                const attColRef = collection(firestore, 'Osras', transferSourceKey, 'attendance');
+                const attSnap = await getDocs(attColRef);
+                sourceAttendanceDocs = attSnap?.docs || [];
+            } catch (attErr) {
+                console.warn('Could not fetch source attendance for transfer:', attErr);
+            }
 
             for (const childId of transferSelectedIds) {
                 try {
                     const child = children.find(c => c.id === childId);
                     if (!child) continue;
 
-                    const oldDocRef = doc(firestore, 'Osras', transferSourceKey, 'children', String(child.id));
-                    const newDocRef = doc(firestore, 'Osras', transferTargetKey, 'children', String(child.id));
+                    const childIdStr = String(child.id);
+                    const oldDocRef = doc(firestore, 'Osras', transferSourceKey, 'children', childIdStr);
+                    const newDocRef = doc(firestore, 'Osras', transferTargetKey, 'children', childIdStr);
 
-                    // قراءة الداتا المشفرة من المصدر
-                    const oldSnap = await getDoc(oldDocRef);
-                    if (!oldSnap.exists()) continue;
+                    // 1. Read existing Firestore data or fallback to Dexie data
+                    let childDataToMigrate = null;
+                    let hadRemoteDoc = false;
+                    try {
+                        const oldSnap = await getDoc(oldDocRef);
+                        if (oldSnap.exists()) {
+                            hadRemoteDoc = true;
+                            const rawData = oldSnap.data();
+                            childDataToMigrate = rawData.payload ? decryptData(rawData.payload) : rawData;
+                        }
+                    } catch (_err) {}
 
-                    const rawData = oldSnap.data();
-                    const decryptedData = rawData.payload ? decryptData(rawData.payload) : rawData;
-                    if (!decryptedData) continue;
+                    if (!childDataToMigrate) {
+                        childDataToMigrate = { ...child };
+                    }
 
-                    // تحديث الـ syncKey للفصل الجديد
-                    decryptedData.syncKey = transferTargetKey;
-                    decryptedData.updatedAt = new Date().toISOString();
+                    // 2. Set new target class key
+                    childDataToMigrate.syncKey = transferTargetKey;
+                    childDataToMigrate.updatedAt = now;
+                    childDataToMigrate.isDirty = false;
+                    childDataToMigrate.isDeleted = false;
 
-                    const newPayload = rawData.payload
-                        ? { payload: encryptData(decryptedData) }
-                        : decryptedData;
-
+                    const newPayload = { payload: encryptData(childDataToMigrate) };
                     batch.set(newDocRef, newPayload);
-                    batch.delete(oldDocRef);
+                    if (hadRemoteDoc) {
+                        batch.delete(oldDocRef);
+                    }
+
+                    // 3. Migrate Child's Attendance in Firestore
+                    for (const attDoc of sourceAttendanceDocs) {
+                        try {
+                            const rawAtt = attDoc.data();
+                            const attData = rawAtt.payload ? decryptData(rawAtt.payload) : rawAtt;
+                            if (attData && String(attData.childId) === childIdStr) {
+                                const newAttDocRef = doc(firestore, 'Osras', transferTargetKey, 'attendance', attDoc.id);
+                                const updatedAtt = {
+                                    ...attData,
+                                    syncKey: transferTargetKey,
+                                    updatedAt: now,
+                                    isDirty: false,
+                                    isDeleted: false
+                                };
+                                batch.set(newAttDocRef, { payload: encryptData(updatedAtt) });
+                                batch.delete(attDoc.ref);
+                            }
+                        } catch (_e) {}
+                    }
+
                     transferredCount++;
                 } catch (err) {
                     console.error('Failed to transfer child:', childId, err);
@@ -212,23 +269,62 @@ export default function MasterDashboard() {
             if (transferredCount > 0) {
                 await batch.commit();
 
-                // تحديث Dexie محلياً
+                // 4. Update Dexie locally for all transferred children & their attendance and grades
                 for (const childId of transferSelectedIds) {
+                    const idStr = String(childId);
                     try {
                         await db.children.update(childId, {
                             syncKey: transferTargetKey,
                             isDirty: false,
-                            updatedAt: new Date().toISOString()
+                            updatedAt: now
                         });
+                        if (childId !== idStr) {
+                            try {
+                                await db.children.update(idStr, {
+                                    syncKey: transferTargetKey,
+                                    isDirty: false,
+                                    updatedAt: now
+                                });
+                            } catch (_e) {}
+                        }
+
+                        // Update attendance syncKey in Dexie
+                        await db.attendance.where('childId').equals(childId).modify({
+                            syncKey: transferTargetKey,
+                            isDirty: false,
+                            updatedAt: now
+                        });
+                        if (childId !== idStr) {
+                            await db.attendance.where('childId').equals(idStr).modify({
+                                syncKey: transferTargetKey,
+                                isDirty: false,
+                                updatedAt: now
+                            });
+                        }
+
+                        // Update grades syncKey in Dexie
+                        await db.grades.where('childId').equals(childId).modify({
+                            syncKey: transferTargetKey,
+                            isDirty: false,
+                            updatedAt: now
+                        });
+                        if (childId !== idStr) {
+                            await db.grades.where('childId').equals(idStr).modify({
+                                syncKey: transferTargetKey,
+                                isDirty: false,
+                                updatedAt: now
+                            });
+                        }
                     } catch (_e) { /* skip if not found locally */ }
                 }
 
-                alert(`✅ تم ترحيل ${transferredCount} مخدوم بنجاح!`);
+                alert(`✅ تم ترحيل ${transferredCount} مخدوم بنجاح ونقل سجلاتهم بالكامل!`);
                 logActivity('TRANSFER_CHILDREN', `ترحيل ${transferredCount} مخدوم من ${allowedOsras.find(o => o.syncKey === transferSourceKey)?.name || transferSourceKey} إلى ${allowedOsras.find(o => o.syncKey === transferTargetKey)?.name || transferTargetKey}`);
                 setTransferSelectedIds(new Set());
                 setTransferSourceKey('');
                 setTransferTargetKey('');
                 setShowTransferTool(false);
+                triggerAutoSync();
             } else {
                 alert('لم يتم ترحيل أي مخدوم. تأكد من اختيار مخدومين صحيحين.');
             }
@@ -593,7 +689,7 @@ export default function MasterDashboard() {
                                     >
                                         <div className="w-16 h-16 rounded-full bg-slate-100 border-4 border-slate-50 overflow-hidden shrink-0 shadow-inner group-hover:border-amber-100 transition-colors">
                                             {osra.logo ? (
-                                                <img src={osra.logo} width="64" height="64" loading="lazy" alt="لوجو الأسرة" className="w-full h-full object-cover" />
+                                                <img src={osra.logo} width="64" height="64" loading="lazy" alt="لوجو الأسرة" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                             ) : (
                                                 <Users className="w-full h-full p-4 text-slate-400" />
                                             )}
@@ -624,7 +720,7 @@ export default function MasterDashboard() {
                         <div className="bg-white p-4 rounded-4xl shadow-sm border border-slate-200 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 {activeOsra.logo ? (
-                                    <img src={activeOsra.logo} width="48" height="48" loading="eager" alt="لوجو الأسرة" className="w-12 h-12 rounded-full border-2 border-slate-100 object-cover" />
+                                    <img src={activeOsra.logo} width="48" height="48" loading="eager" alt="لوجو الأسرة" className="w-12 h-12 rounded-full border-2 border-slate-100 object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                 ) : (
                                     <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500"><Users size={20} /></div>
                                 )}
@@ -686,14 +782,14 @@ export default function MasterDashboard() {
                                         >
                                             <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400 group-hover:bg-amber-500 transition-colors"></div>
 
-                                            <div className="flex items-center gap-3 pr-2">
-                                                <div className="w-12 h-12 rounded-full ring-2 ring-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-xs">
-                                                    {servant.photoURL || servant.profileImage || servant.profilePic ? (
-                                                        <img src={servant.photoURL || servant.profileImage || servant.profilePic} alt={servant.name} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <UserCircle size={28} className="text-amber-400" />
-                                                    )}
-                                                </div>
+                                             <div className="flex items-center gap-3 pr-2">
+                                                 <div className="w-12 h-12 rounded-full ring-2 ring-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-xs">
+                                                     {servant.photoURL || servant.profileImage || servant.profilePic ? (
+                                                         <img src={servant.photoURL || servant.profileImage || servant.profilePic} alt={servant.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                                     ) : (
+                                                         <UserCircle size={28} className="text-amber-400" />
+                                                     )}
+                                                 </div>
 
                                                 <div>
                                                     <h3 className="font-black text-slate-800 flex items-center gap-2 group-hover:text-amber-700 transition-colors">

@@ -161,7 +161,15 @@ export default function Login() {
                     <div className="flex flex-col items-center text-center mb-8">
                         <div className="w-24 h-24 rounded-full bg-white/10 border-2 border-white/30 flex items-center justify-center p-1 mb-4 shadow-lg overflow-hidden">
                             {appSettings.khedmaLogo ? (
-                                <img src={appSettings.khedmaLogo} width="96" height="96" loading="eager" alt="لوجو الخدمة" className="w-full h-full object-cover rounded-full" />
+                                <img 
+                                    src={appSettings.khedmaLogo} 
+                                    width="96" 
+                                    height="96" 
+                                    loading="eager" 
+                                    alt="لوجو الخدمة" 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                    className="w-full h-full object-cover rounded-full" 
+                                />
                             ) : (
                                 <Church className="text-white w-12 h-12" />
                             )}

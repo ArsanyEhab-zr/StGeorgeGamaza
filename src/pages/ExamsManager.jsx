@@ -66,16 +66,20 @@ export default function ExamsManager() {
         if (!examGradesArray) return {};
         const map = {};
         examGradesArray.forEach(g => {
-            map[g.childId] = g.grade;
+            map[String(g.childId)] = g.grade;
         });
         return map;
     }, [examGradesArray]);
 
     const filteredChildren = useMemo(() => {
         if (!children) return [];
-        if (!searchQuery) return children;
-        return children.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
-    }, [children, searchQuery]);
+        let list = children;
+        if (selectedExam && selectedExam.syncKey && selectedExam.syncKey !== 'MASTER_ACCESS') {
+            list = list.filter(c => c.syncKey === selectedExam.syncKey);
+        }
+        if (!searchQuery) return list;
+        return list.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    }, [children, selectedExam, searchQuery]);
 
     // 📝 Create exam — Dexie first, then background Firebase write (dual-write)
     const handleSaveExam = async (e) => {
@@ -182,11 +186,13 @@ export default function ExamsManager() {
         try {
             const now = new Date().toISOString();
             const examId = selectedExam.firebaseId || selectedExam.id?.toString();
-            const childIdNum = parseInt(childId, 10);
+            const childIdStr = String(childId);
 
-            // Find existing grade for this child + exam combo
-            const existing = await db.grades.where('examId').equals(examId).filter(g => g.childId === childIdNum).toArray();
+            // Find existing grade for this child + exam combo (handling string IDs safely)
+            const existing = await db.grades.where('examId').equals(examId).filter(g => String(g.childId) === childIdStr).toArray();
             const match = existing[0];
+
+            const targetSyncKey = (selectedExam.syncKey && selectedExam.syncKey !== 'MASTER_ACCESS') ? selectedExam.syncKey : (currentSyncKey || 'default');
 
             if (gradeVal === "") {
                 // Clearing grade — soft-delete
@@ -200,13 +206,13 @@ export default function ExamsManager() {
                 } else {
                     // Insert new grade
                     await db.grades.add({
-                        childId: childIdNum,
+                        childId: childIdStr,
                         grade: gradeVal,
                         examId,
                         examName: selectedExam.examName,
                         maxGrade: selectedExam.maxGrade,
                         date: selectedExam.date,
-                        syncKey: currentSyncKey,
+                        syncKey: targetSyncKey,
                         isDirty: true,
                         updatedAt: now,
                         isDeleted: false
@@ -218,8 +224,8 @@ export default function ExamsManager() {
             triggerAutoSync();
 
             // 3. Best-effort direct Firebase write (non-blocking)
-            if (navigator.onLine && examId) {
-                const gradeDocRef = doc(firestore, 'Osras', currentSyncKey, 'exams', examId, 'grades', childIdNum.toString());
+            if (navigator.onLine && examId && targetSyncKey && targetSyncKey !== 'MASTER_ACCESS') {
+                const gradeDocRef = doc(firestore, 'Osras', targetSyncKey, 'exams', examId, 'grades', childIdStr);
 
                 if (gradeVal === "") {
                     // Delete from Firebase
@@ -229,19 +235,19 @@ export default function ExamsManager() {
                 } else {
                     // Write encrypted grade to Firebase
                     const gradeDataForCloud = {
-                        childId: childIdNum,
+                        childId: childIdStr,
                         grade: gradeVal,
                         examId,
                         examName: selectedExam.examName,
                         maxGrade: selectedExam.maxGrade,
                         date: selectedExam.date,
-                        syncKey: currentSyncKey,
+                        syncKey: targetSyncKey,
                         updatedAt: now
                     };
                     const encryptedPayload = encryptData(gradeDataForCloud);
                     setDoc(gradeDocRef, { payload: encryptedPayload }, { merge: true }).then(async () => {
                         // Mark the local record clean after successful Firebase write
-                        const freshMatch = await db.grades.where('examId').equals(examId).filter(g => g.childId === childIdNum && !g.isDeleted).first();
+                        const freshMatch = await db.grades.where('examId').equals(examId).filter(g => String(g.childId) === childIdStr && !g.isDeleted).first();
                         if (freshMatch) {
                             await db.grades.update(freshMatch.id, { isDirty: false, updatedAt: new Date().toISOString() });
                         }
@@ -384,7 +390,7 @@ export default function ExamsManager() {
                                             type="number" 
                                             min="0"
                                             max={selectedExam.maxGrade}
-                                            value={examGrades[child.id] !== undefined ? examGrades[child.id] : ""}
+                                            value={examGrades[String(child.id)] !== undefined ? examGrades[String(child.id)] : ""}
                                             onChange={(e) => handleGradeChange(child.id, e.target.value)}
                                             placeholder="الدرجة"
                                             className="w-20 text-center p-2 bg-slate-50 border border-slate-200 rounded-xl font-black text-indigo-700 focus:outline-none focus:ring-2 focus:ring-amber-400"

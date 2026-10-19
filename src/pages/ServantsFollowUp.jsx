@@ -101,6 +101,18 @@ export default function ServantsFollowUp() {
     const [servantsData, setServantsData] = useState([]);
     const [weeklyRecords, setWeeklyRecords] = useState([]);
     const [totalServantCount, setTotalServantCount] = useState(0);
+    const [profileUpdateCount, setProfileUpdateCount] = useState(0);
+
+    // 🔄 Live Listener: Re-sync servant roster when a profile is updated anywhere
+    useEffect(() => {
+        const handleUpdate = () => setProfileUpdateCount(c => c + 1);
+        window.addEventListener('servant-profile-updated', handleUpdate);
+        window.addEventListener('storage', handleUpdate);
+        return () => {
+            window.removeEventListener('servant-profile-updated', handleUpdate);
+            window.removeEventListener('storage', handleUpdate);
+        };
+    }, []);
     
     // 🌟 1. Fetch Servants & Listen to Attendance in Real-Time
     useEffect(() => {
@@ -193,7 +205,7 @@ export default function ServantsFollowUp() {
                     activitiesDiocese: "", 
                     tasks: "", 
                     leaderNotes: "",
-                    profileImage: s.profileImage || ""
+                    profileImage: s.profileImage || s.photoURL || s.profilePic || ""
                 };
             });
 
@@ -269,7 +281,7 @@ export default function ServantsFollowUp() {
             unsubscribe();
             unsubWeekly();
         };
-    }, [weekDate]);
+    }, [weekDate, profileUpdateCount]);
 
     const handleUpdate = async (id, field, value) => {
         // Optimistic UI update for current day
@@ -642,7 +654,12 @@ export default function ServantsFollowUp() {
                                                 title="عرض وتعديل بروفايل الخادم"
                                             >
                                                 {s.profileImage ? (
-                                                    <img src={s.profileImage} alt={s.name} className="w-10 h-10 rounded-full mx-auto object-cover border-2 border-slate-600 group-hover:border-emerald-400 transition-colors" />
+                                                    <img 
+                                                        src={s.profileImage} 
+                                                        alt={s.name} 
+                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                        className="w-10 h-10 rounded-full mx-auto object-cover border-2 border-slate-600 group-hover:border-emerald-400 transition-colors" 
+                                                    />
                                                 ) : (
                                                     <div className="w-10 h-10 rounded-full mx-auto bg-slate-700 flex items-center justify-center text-slate-400 group-hover:border group-hover:border-emerald-400 transition-colors">
                                                         <span className="text-xs">{s.name.substring(0, 2)}</span>

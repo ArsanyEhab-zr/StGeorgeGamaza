@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useEffect } from 'react';
-import { uploadImageToCloudinary } from '../utils/cloudinary';
+import React, { useState, useEffect, useMemo } from 'react';
+import { uploadImageToCloudinary, uploadImageWithFallback } from '../utils/cloudinary';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { Link, useNavigate } from 'react-router-dom';
@@ -13,9 +13,11 @@ import {
     BarChart3, Users, ArrowRight,
     ImagePlus, Loader2, Sparkles, BookOpen, UserPlus, Edit3, Trash2,
     Lock, Shirt, MapPin, DatabaseBackup, Save, FileSpreadsheet, ChevronRight, Phone, Search, Map, Calendar, Briefcase, StickyNote, Camera,
-    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus, UserCircle
+    LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus, UserCircle,
+    BellRing, ChevronUp, ChevronDown, CalendarX, HeartHandshake, CheckCircle2, MessageCircle, X
 } from 'lucide-react';
 import ExcelImporter from '../components/ExcelImporter';
+import SmartAlertsCard from '../components/SmartAlertsCard';
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
@@ -48,13 +50,35 @@ export default function Dashboard() {
     const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
     const allowedClasses = currentServantObj.allowedClasses || [];
 
+    const [activeClassKey, setActiveClassKey] = useState(() => {
+        return sessionStorage.getItem('dashboard_activeClassKey') || 'all';
+    });
+
+    // قائمة الأسرات المتاحة للأدمن
+    const allAvailableOsras = useMemo(() => {
+        const services = appSettings.services || [];
+        let list = services.flatMap(s => (s.osras || []).map(o => ({ ...o, serviceName: s.name })));
+        if (currentSyncKey === 'STAGE_ADMIN' && allowedClasses.length > 0) {
+            list = list.filter(o => allowedClasses.includes(o.syncKey));
+        }
+        return list;
+    }, [appSettings.services, currentSyncKey, JSON.stringify(allowedClasses)]);
+
     const children = useLiveQuery(async () => {
         let kids = [];
         if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
-            kids = await db.children.toArray();
+            if (activeClassKey && activeClassKey !== 'MASTER_ACCESS' && activeClassKey !== 'ADMIN_MODE' && activeClassKey !== 'all') {
+                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
+            } else {
+                kids = await db.children.toArray();
+            }
         } else if (currentSyncKey === 'STAGE_ADMIN') {
-            if (allowedClasses.length === 0) return [];
-            kids = await db.children.where('syncKey').anyOf(allowedClasses).toArray();
+            if (activeClassKey && activeClassKey !== 'all' && allowedClasses.includes(activeClassKey)) {
+                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
+            } else {
+                if (allowedClasses.length === 0) return [];
+                kids = await db.children.where('syncKey').anyOf(allowedClasses).toArray();
+            }
         } else if (currentSyncKey) {
             kids = await db.children.where('syncKey').equals(currentSyncKey).toArray();
         }
@@ -62,17 +86,21 @@ export default function Dashboard() {
         // 🌟 1. Filter out soft-deleted globally
         kids = kids.filter(c => !c.isDeleted);
         
-        // 🌟 2. For Master Admins, filter out orphaned kids (syncKey not in active Osras) to match MasterDashboard count exactly
+        // 🌟 2. For Master Admins showing all classes, filter out orphaned kids (syncKey not in active Osras) to match MasterDashboard count exactly
         if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
-            const saved = localStorage.getItem('appSettings');
-            const settings = saved ? JSON.parse(saved) : {};
-            const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
-            kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
+            if (!activeClassKey || activeClassKey === 'all') {
+                const saved = localStorage.getItem('appSettings');
+                const settings = saved ? JSON.parse(saved) : {};
+                const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
+                kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
+            }
         }
         
         return kids;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSyncKey]);
+    }, [currentSyncKey, JSON.stringify(allowedClasses), activeClassKey]);
+
+    const { triggerAutoSync } = useAutoSync();
 
     // 🌟 currentSyncKey and isMaster are already defined above with the children query
 
@@ -163,7 +191,16 @@ export default function Dashboard() {
                         )}
                         <div className="flex items-center gap-3">
                             {appSettings.osraLogo ? (
-                                <img src={appSettings.osraLogo} width="40" height="40" loading="eager" fetchpriority="high" className="w-10 h-10 rounded-full object-cover border-2 border-slate-700" alt="لوجو الأسرة" />
+                                <img 
+                                    src={appSettings.osraLogo} 
+                                    width="40" 
+                                    height="40" 
+                                    loading="eager" 
+                                    fetchpriority="high" 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-slate-700" 
+                                    alt="لوجو الأسرة" 
+                                />
                             ) : (
                                 <DatabaseBackup className="text-indigo-400" size={24} />
                             )}
@@ -185,12 +222,54 @@ export default function Dashboard() {
             <main className="p-4 max-w-4xl mx-auto mt-4">
                 {currentView === 'menu' && (
                     <div className="animate-in fade-in zoom-in-95 duration-300">
+                        {/* 🌟 شريط اختيار الأسرة للأدمن (Admin Class Selector) */}
+                        {isMaster && (
+                            <div className="mb-4 bg-white p-3.5 sm:p-4 rounded-[1.75rem] border border-indigo-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-black shrink-0 shadow-xs">
+                                        <Users size={18} />
+                                    </div>
+                                    <div>
+                                        <span className="text-xs font-black text-slate-800 block">تصفية حسب الأسرة / الفصل (Admin Class Selector):</span>
+                                        <span className="text-[10px] font-bold text-slate-500">
+                                            {activeClassKey === 'all'
+                                                ? 'عرض شامل لكل الأسر'
+                                                : `محدد: ${allAvailableOsras.find(o => o.syncKey === activeClassKey)?.name || activeClassKey}`}
+                                        </span>
+                                    </div>
+                                </div>
+                                <select
+                                    value={activeClassKey}
+                                    onChange={(e) => {
+                                        setActiveClassKey(e.target.value);
+                                        sessionStorage.setItem('dashboard_activeClassKey', e.target.value);
+                                    }}
+                                    className="w-full sm:w-auto bg-indigo-50/70 border border-indigo-200 text-indigo-900 font-black text-xs rounded-xl px-3.5 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
+                                >
+                                    <option value="all">كل الأسر (عام)</option>
+                                    {allAvailableOsras.map(osra => (
+                                        <option key={osra.syncKey} value={osra.syncKey}>
+                                            {osra.name} ({osra.serviceName || 'الخدمة'})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        {/* 🚨 كارت التنبيهات الذكية والمتابعة الفورية */}
+                        <SmartAlertsCard activeClassKey={activeClassKey} />
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {/* 🌟 بروفايل الخادم (الملف الشخصي) */}
                             <Link to="/servant-profile" className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-indigo-50 hover:border-indigo-200 transition-all flex flex-col items-center text-center group">
                                 <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform overflow-hidden ring-2 ring-indigo-200 shadow-xs">
                                     {currentServantObj?.photoURL || currentServantObj?.profileImage || currentServantObj?.profilePic ? (
-                                        <img src={currentServantObj.photoURL || currentServantObj.profileImage || currentServantObj.profilePic} alt="بروفايلي" className="w-full h-full object-cover" />
+                                        <img 
+                                            src={currentServantObj.photoURL || currentServantObj.profileImage || currentServantObj.profilePic} 
+                                            alt="بروفايلي" 
+                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            className="w-full h-full object-cover" 
+                                        />
                                     ) : (
                                         <UserCircle size={32} />
                                     )}
@@ -632,18 +711,14 @@ function KidsManagerView({ childrenData }) {
     const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            if (!navigator.onLine) {
-                alert("⚠️ لازم نت عشان ترفع الصورة!");
-                return;
-            }
             setIsCompressingImage(true);
             try {
-                const secure_url = await uploadImageToCloudinary(file, 'auto');
+                const secure_url = await uploadImageWithFallback(file, 'image');
                 setFormChild(prev => ({ ...prev, profilePic: secure_url }));
-                alert("✅ تم رفع الصورة بنجاح!");
+                alert("✅ تم اختيار وحفظ الصورة بنجاح!");
             } catch (err) {
                 console.error(err);
-                alert("❌ فشل رفع الصورة، حاول مرة تانية.");
+                alert("❌ فشل معالجة الصورة، حاول مرة تانية.");
             } finally {
                 setIsCompressingImage(false);
             }
@@ -722,7 +797,12 @@ function KidsManagerView({ childrenData }) {
                                 {isCompressingImage ? (
                                     <div className="flex flex-col items-center text-indigo-500"><Loader2 className="animate-spin mb-1" size={28} /><span className="text-[10px] font-black">جاري الضغط</span></div>
                                 ) : formChild.profilePic ? (
-                                    <img src={formChild.profilePic} className="w-full h-full object-cover" alt="Profile" />
+                                    <img 
+                                        src={formChild.profilePic} 
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        className="w-full h-full object-cover" 
+                                        alt="Profile" 
+                                    />
                                 ) : (
                                     <Camera className="text-slate-400 group-hover:text-indigo-500 transition-colors" size={36} />
                                 )}
@@ -878,7 +958,17 @@ function KidsManagerView({ childrenData }) {
                             <div className="flex justify-between items-start">
                                 <div className="flex items-center gap-3">
                                     <div className="relative w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center text-xl overflow-hidden shadow-inner">
-                                        {child.profilePic ? <img src={child.profilePic} width="48" height="48" loading="lazy" className="w-full h-full object-cover" alt={child.name} /> : (child.gender === 'بنت' ? '👧' : '👦')}
+                                        {child.profilePic ? (
+                                            <img 
+                                                src={child.profilePic} 
+                                                width="48" 
+                                                height="48" 
+                                                loading="lazy" 
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                className="w-full h-full object-cover" 
+                                                alt={child.name} 
+                                            />
+                                        ) : (child.gender === 'بنت' ? '👧' : '👦')}
 
                                     </div>
                                     <div>

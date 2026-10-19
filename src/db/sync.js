@@ -405,9 +405,9 @@ const _syncDataWithCloud = async () => {
         } } catch(e) { console.error('Error syncing children pull:', e); }
 
         // 🪦 6a. حذف المخدومين المحذوفين على السحابة من قاعدة البيانات المحلية (Dexie)
+        const syncedSyncKeys = isAdmin ? null : (isStageAdmin ? new Set(allowedClasses.map(String)) : new Set([String(currentSyncKey)]));
         try {
             const cloudChildrenIdSet = new Set(cloudChildren.map(c => String(c.id)));
-            const syncedSyncKeys = isAdmin ? null : (isStageAdmin ? new Set(allowedClasses.map(String)) : new Set([String(currentSyncKey)]));
 
             for (const localChild of localChildren) {
                 if (pushedChildrenIds.has(localChild.id)) continue;
@@ -452,6 +452,22 @@ const _syncDataWithCloud = async () => {
             }
         } } catch(e) { console.error('Error syncing events pull:', e); }
 
+        // 🪦 6a-2. حذف الرحلات والأحداث المحذوفة سحابياً
+        try {
+            const cloudEventsIdSet = new Set(cloudEvents.map(e => String(e.id)));
+            for (const localEvent of localEvents) {
+                if (pushedEventsIds.has(localEvent.id)) continue;
+                if (localEvent.isDirty) continue;
+                const isGlobal = localEvent.isGlobal || localEvent.syncKey === 'global';
+                const belongs = isAdmin || isGlobal || (localEvent.syncKey && syncedSyncKeys.has(String(localEvent.syncKey)));
+                if (!belongs) continue;
+                if (!cloudEventsIdSet.has(String(localEvent.id))) {
+                    await db.events.delete(localEvent.id);
+                }
+            }
+        } catch (e) {
+            console.error('Error reconciling deleted events during pull:', e);
+        }
 
         const localAttendanceMap = new Map(localAttendance.map(a => [`${a.date}_${a.childId}_${a.type}`, a]));
         try { for (const cAtt of cloudAttendance) {
@@ -468,6 +484,25 @@ const _syncDataWithCloud = async () => {
                 pullLog.attendanceAdded.push(`${kidName}(${cAtt.date.slice(5)})`);
             }
         } } catch(e) { console.error('Error syncing attendance pull:', e); }
+
+        // 🪦 6a-3. حذف سجلات الحضور المحذوفة سحابياً من Dexie
+        try {
+            const cloudAttendanceKeySet = new Set(cloudAttendance.map(a => `${a.date}_${a.childId}_${a.type}`));
+            for (const localAtt of localAttendance) {
+                const attKey = `${localAtt.date}_${localAtt.childId}_${localAtt.type}`;
+                if (pushedAttendanceIds.has(attKey)) continue;
+                if (localAtt.isDirty) continue; // Skip unpushed offline attendance
+
+                const belongs = isAdmin || (localAtt.syncKey && syncedSyncKeys.has(String(localAtt.syncKey)));
+                if (!belongs) continue;
+
+                if (!cloudAttendanceKeySet.has(attKey)) {
+                    await db.attendance.delete(localAtt.id);
+                }
+            }
+        } catch (e) {
+            console.error('Error reconciling deleted attendance during pull:', e);
+        }
 
         const localActivitiesMap = new Map(localActivities.map(a => [a.id, a]));
         try { for (const cloudActivity of cloudActivities) {
@@ -489,6 +524,22 @@ const _syncDataWithCloud = async () => {
                 }
             }
         } } catch(e) { console.error('Error syncing activities pull:', e); }
+
+        // 🪦 6a-4. حذف الأنشطة المحذوفة سحابياً
+        try {
+            const cloudActivitiesIdSet = new Set(cloudActivities.map(a => String(a.id)));
+            for (const localAct of localActivities) {
+                if (pushedActivitiesIds.has(localAct.id)) continue;
+                if (localAct.isDirty) continue;
+                const belongs = isAdmin || (localAct.syncKey && syncedSyncKeys.has(String(localAct.syncKey)));
+                if (!belongs) continue;
+                if (!cloudActivitiesIdSet.has(String(localAct.id))) {
+                    await db.activities.delete(localAct.id);
+                }
+            }
+        } catch (e) {
+            console.error('Error reconciling deleted activities during pull:', e);
+        }
 
         // 📝 6b. سحب الامتحانات (Exams metadata pull)
         let cloudExamsList = [];
@@ -539,7 +590,7 @@ const _syncDataWithCloud = async () => {
         } } catch(e) { console.error('Error syncing exams pull:', e); }
 
         // 🎓 6c. سحب الدرجات (Grades pull)
-        // Pull grades for each cloud exam
+        const cloudGradesKeySet = new Set();
         try { for (const cloudExam of cloudExamsList) {
             let cloudGradesDocs = [];
             try {
@@ -556,11 +607,14 @@ const _syncDataWithCloud = async () => {
                 if (!gradeData || !gradeData.childId) continue;
 
                 const gradeKey = `${cloudExam.firebaseId}_${gradeData.childId}`;
+                cloudGradesKeySet.add(gradeKey);
+                cloudGradesKeySet.add(`${cloudExam.firebaseId}_${String(gradeData.childId)}`);
+
                 if (pushedGradeKeys.has(gradeKey)) continue;
 
                 // Find local match by examId + childId
                 const localGradeMatch = localGrades.find(
-                    g => g.examId === cloudExam.firebaseId && g.childId === gradeData.childId
+                    g => g.examId === cloudExam.firebaseId && String(g.childId) === String(gradeData.childId)
                 );
 
                 const syncKeyToSave = (isAdmin || isStageAdmin) ? (gradeData.syncKey || currentSyncKey) : currentSyncKey;
@@ -589,6 +643,34 @@ const _syncDataWithCloud = async () => {
                 }
             }
         } } catch(e) { console.error('Error syncing grades pull:', e); }
+
+        // 🪦 6a-5. حذف الامتحانات والدرجات المحذوفة سحابياً من Dexie
+        try {
+            const cloudExamsKeySet = new Set(cloudExamsList.map(e => e.firebaseId));
+            for (const localExam of localExams) {
+                if (pushedExamIds.has(localExam.firebaseId)) continue;
+                if (localExam.isDirty) continue;
+                const belongs = isAdmin || (localExam.syncKey && syncedSyncKeys.has(String(localExam.syncKey)));
+                if (!belongs) continue;
+                if (!cloudExamsKeySet.has(localExam.firebaseId)) {
+                    await db.exams.delete(localExam.id);
+                    await db.grades.where('examId').equals(localExam.firebaseId).delete();
+                }
+            }
+
+            for (const localGrade of localGrades) {
+                const gradeKey = `${localGrade.examId}_${localGrade.childId}`;
+                if (pushedGradeKeys.has(gradeKey)) continue;
+                if (localGrade.isDirty) continue;
+                const belongs = isAdmin || (localGrade.syncKey && syncedSyncKeys.has(String(localGrade.syncKey)));
+                if (!belongs) continue;
+                if (!cloudGradesKeySet.has(gradeKey) && !cloudGradesKeySet.has(`${localGrade.examId}_${String(localGrade.childId)}`)) {
+                    await db.grades.delete(localGrade.id);
+                }
+            }
+        } catch (e) {
+            console.error('Error reconciling deleted exams/grades during pull:', e);
+        }
 
         // 🕐 تحديث آخر وقت مزامنة
         localStorage.setItem('lastSyncTime', now);
@@ -708,7 +790,7 @@ export const deleteChildRecord = async (childId, cachedChildData = null) => {
             try { await db.children.update(idStr, { isDeleted: true, isDirty: true, updatedAt: now }); } catch (_e) {}
         }
 
-        // 2. Also soft-delete attendance records for this child
+        // 2. Also soft-delete attendance & grades records for this child
         try {
             await db.attendance.where('childId').equals(childId).modify({ isDeleted: true, isDirty: true, updatedAt: now });
             if (childId !== idStr) {
@@ -716,6 +798,15 @@ export const deleteChildRecord = async (childId, cachedChildData = null) => {
             }
         } catch (_attErr) {
             console.warn('Error soft-deleting attendance for child:', _attErr);
+        }
+
+        try {
+            await db.grades.where('childId').equals(childId).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+            if (childId !== idStr) {
+                await db.grades.where('childId').equals(idStr).modify({ isDeleted: true, isDirty: true, updatedAt: now });
+            }
+        } catch (_gradeErr) {
+            console.warn('Error soft-deleting grades for child:', _gradeErr);
         }
 
         // 3. Log audit activity in Master Activity Logs
@@ -738,6 +829,12 @@ export const deleteChildRecord = async (childId, cachedChildData = null) => {
         if (remoteDeleted) {
             await db.children.delete(childId);
             if (childId !== idStr) await db.children.delete(idStr);
+            try {
+                await db.attendance.where('childId').equals(childId).delete();
+                if (childId !== idStr) await db.attendance.where('childId').equals(idStr).delete();
+                await db.grades.where('childId').equals(childId).delete();
+                if (childId !== idStr) await db.grades.where('childId').equals(idStr).delete();
+            } catch (_e) {}
         }
 
         // 6. Broadcast global sync event

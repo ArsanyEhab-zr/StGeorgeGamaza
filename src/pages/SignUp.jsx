@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { doc, getDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 import { ShieldCheck, UserPlus, Loader2, Phone, Lock, User, Layers, ImagePlus } from 'lucide-react';
-import { uploadImageToCloudinary } from '../utils/cloudinary';
+import { uploadImageToCloudinary, uploadImageWithFallback } from '../utils/cloudinary';
 
 export default function SignUp() {
     const navigate = useNavigate();
@@ -105,7 +105,12 @@ export default function SignUp() {
                         <div className="relative bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col items-center justify-center gap-3">
                             {formData.profileImage ? (
                                 <div className="relative w-20 h-20">
-                                    <img src={formData.profileImage} alt="Profile" className="w-full h-full rounded-full object-cover border-2 border-indigo-500 shadow-md" />
+                                    <img 
+                                        src={formData.profileImage} 
+                                        alt="Profile" 
+                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                        className="w-full h-full rounded-full object-cover border-2 border-indigo-500 shadow-md" 
+                                    />
                                 </div>
                             ) : (
                                 <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
@@ -125,10 +130,11 @@ export default function SignUp() {
                                         if (file) {
                                             setIsUploadingImg(true);
                                             try {
-                                                const url = await uploadImageToCloudinary(file);
+                                                const url = await uploadImageWithFallback(file, 'image');
                                                 setFormData({ ...formData, profileImage: url });
                                             } catch (error) {
-                                                alert(error.message === "Cloudinary credentials are not configured in .env" ? "لم يتم إعداد Cloudinary بعد." : "فشل رفع الصورة.");
+                                                console.error(error);
+                                                alert("فشل معالجة الصورة الشخصية.");
                                             }
                                             setIsUploadingImg(false);
                                         }

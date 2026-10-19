@@ -70,7 +70,12 @@ const AttendanceCard = ({ child, onEdit }) => {
                     <Link to={`/child/${child.id}`}>
                         <div className={`w-12 h-12 rounded-2xl bg-linear-to-br from-${themeColor}-100 to-${themeColor}-50 border border-${themeColor}-200 flex items-center justify-center text-lg font-black text-${themeColor}-600 shadow-inner`}>
                             {child.profilePic ? (
-                                <img src={child.profilePic} alt={child.name} className="w-full h-full rounded-2xl object-cover" />
+                                <img 
+                                    src={child.profilePic} 
+                                    alt={child.name} 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                    className="w-full h-full rounded-2xl object-cover" 
+                                />
                             ) : (
                                 isGirl ? '👧' : '👦'
                             )}

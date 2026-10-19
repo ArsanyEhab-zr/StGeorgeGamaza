@@ -23,14 +23,15 @@ export default function Visitation() {
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
     const children = useLiveQuery(() => {
         if (isMaster) {
-            return searchQuery
-                ? db.children.where('name').startsWithIgnoreCase(searchQuery).toArray()
-                : db.children.toArray();
+            return db.children.filter(c => !c.isDeleted).toArray()
+                .then(arr => searchQuery
+                    ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
+                    : arr);
         }
         if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray()
+        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray()
             .then(arr => searchQuery
-                ? arr.filter(c => c.name?.toLowerCase().startsWith(searchQuery.toLowerCase()))
+                ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
                 : arr);
     }, [searchQuery, currentSyncKey, isMaster]);
 
@@ -178,12 +179,22 @@ export default function Visitation() {
                                                     {isVisitedRecently && <span className="absolute -top-1 -left-1 z-10 bg-green-500 text-white rounded-full p-0.5 shadow-sm"><CheckCircle2 size={12} /></span>}
 
                                                     <div className={`w-14 h-14 rounded-full border-4 ${isSelected ? 'border-indigo-600 shadow-xl shadow-indigo-500/40' : (isVisitedRecently ? 'border-green-400 opacity-70' : 'border-white shadow-md')} overflow-hidden bg-slate-100 flex items-center justify-center text-xl`}>
-                                                        {child.profilePic ? <img src={child.profilePic} width="56" height="56" loading="lazy" className="w-full h-full object-cover" alt={child.name} /> : (child.gender === 'بنت' ? '👧' : '👦')}
+                                                        {child.profilePic ? (
+                                                            <img 
+                                                                src={child.profilePic} 
+                                                                width="56" 
+                                                                height="56" 
+                                                                loading="lazy" 
+                                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                                className="w-full h-full object-cover" 
+                                                                alt={child.name} 
+                                                            />
+                                                        ) : (child.gender === 'بنت' ? '👧' : '👦')}
                                                     </div>
                                                     <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 ${isSelected ? 'border-t-indigo-600' : (isVisitedRecently ? 'border-t-green-400 opacity-70' : 'border-t-white')}`}></div>
 
-                                                    <span className={`text-[10px] font-black mt-1 px-2.5 py-0.5 rounded-full shadow-sm transition-colors max-w-17.5 truncate ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 group-hover:bg-slate-100'}`}>
-                                                        {child.name ? child.name.split(' ')[0] : 'مخدوم'}
+                                                    <span className={`text-[10px] font-black mt-1 px-2.5 py-0.5 rounded-full shadow-sm transition-colors max-w-[100px] truncate text-center ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 group-hover:bg-slate-100'}`} title={child.name}>
+                                                        {child.name ? child.name.trim().split(/\s+/).slice(0, 2).join(' ') : 'مخدوم'}
                                                     </span>
                                                 </button>
                                             </div>

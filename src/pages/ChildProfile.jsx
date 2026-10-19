@@ -82,7 +82,17 @@ const ChildProfile = () => {
                 <div className="flex items-center justify-between mb-8 bg-white/80 backdrop-blur-md p-4 rounded-[2.5rem] shadow-sm border border-slate-200">
                     <div className="flex items-center gap-4">
                         <div className={`w-14 h-14 rounded-full ${themeBg} flex items-center justify-center text-3xl shadow-inner overflow-hidden`}>
-                            {child.profilePic ? <img src={child.profilePic} width="56" height="56" loading="eager" className="w-full h-full object-cover" alt={child.name} /> : (isGirl ? '👧' : '👦')}
+                            {child.profilePic ? (
+                                <img 
+                                    src={child.profilePic} 
+                                    width="56" 
+                                    height="56" 
+                                    loading="eager" 
+                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                    className="w-full h-full object-cover" 
+                                    alt={child.name} 
+                                />
+                            ) : (isGirl ? '👧' : '👦')}
                         </div>
                         <div>
                             <h1 className="text-xl md:text-2xl font-black text-slate-800 flex items-center gap-2 flex-wrap">

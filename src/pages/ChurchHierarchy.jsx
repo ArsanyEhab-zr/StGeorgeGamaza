@@ -79,6 +79,7 @@ export default function ChurchHierarchy() {
                             <img
                                 src={hierarchyData.mainService.logo}
                                 alt="Service Logo"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
                                 className="w-24 h-24 rounded-full border-4 border-slate-50 shadow-md mb-4 object-cover group-hover:scale-105 transition-transform"
                             />
                         ) : (

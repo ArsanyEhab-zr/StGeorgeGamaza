@@ -23,9 +23,9 @@ export default function QrCardGenerator() {
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
 
     const children = useLiveQuery(() => {
-        if (isMaster) return db.children.toArray();
+        if (isMaster) return db.children.filter(c => !c.isDeleted).toArray();
         if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).toArray();
+        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray();
     }, [currentSyncKey, isMaster]);
 
     // ─── App settings for khedma/osra names ───
@@ -321,6 +321,7 @@ function IdCard({ child, khedmaName, osraName, compact = false, forPrint = false
                         <img
                             src={child.profilePic}
                             alt={child.name}
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
                             style={{
                                 width: compact ? '32px' : '44px',
                                 height: compact ? '32px' : '44px',
@@ -394,6 +395,7 @@ function IdCard({ child, khedmaName, osraName, compact = false, forPrint = false
                     <img
                         src={child.profilePic}
                         alt={child.name}
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
                         className={`rounded-full object-cover border-2 border-slate-200 ${compact ? 'w-10 h-10' : 'w-14 h-14'}`}
                     />
                 ) : (

@@ -11,10 +11,17 @@ export default function ExcelExporter() {
         try {
             // 1. 🔐 جلب أطفال الأسرة الحالية بس من قاعدة البيانات
             const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
+            const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
+            const allowedClasses = currentServant?.allowedClasses || [];
             const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-            const children = isMaster
-                ? await db.children.toArray()
-                : (!currentSyncKey ? [] : await db.children.where('syncKey').equals(currentSyncKey).toArray());
+            let children = [];
+            if (currentSyncKey === 'STAGE_ADMIN') {
+                children = allowedClasses.length > 0 ? await db.children.where('syncKey').anyOf(allowedClasses).filter(c => !c.isDeleted).toArray() : [];
+            } else if (isMaster) {
+                children = await db.children.filter(c => !c.isDeleted).toArray();
+            } else if (currentSyncKey) {
+                children = await db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray();
+            }
 
             if (children.length === 0) {
                 alert("لا يوجد بيانات لتصديرها!");

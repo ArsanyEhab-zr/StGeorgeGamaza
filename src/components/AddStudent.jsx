@@ -18,8 +18,14 @@ const AddChild = () => {
     const saveChild = async () => {
         const syncKey = localStorage.getItem('currentSyncKey');
         const now = new Date().toISOString();
+        const year = new Date().getFullYear();
+        const g = formData.gender === 'بنت' ? 'G' : 'B';
+        const rand = crypto.randomUUID().split('-')[0].substring(0, 4).toUpperCase();
+        const id = `${year}-${g}-${rand}`;
+
         await db.children.add({
             ...formData,
+            id,
             streak: 0,
             syncKey,
             isDirty: true,

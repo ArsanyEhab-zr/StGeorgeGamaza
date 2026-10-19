@@ -82,8 +82,12 @@ export default function ExcelImporter() {
                     // استخدام المترجم الذكي هنا
                     const { bMonth, bDay } = parseArabicDate(rawBirthDate);
 
+                    const year = new Date().getFullYear();
+                    const g = (String(row["gender"] || row["النوع"] || "").trim() === "بنت") ? "G" : "B";
+                    const fallbackId = `${year}-${g}-${crypto.randomUUID().split('-')[0].substring(0, 4).toUpperCase()}`;
+
                     return {
-                        id: row.id || row.code || crypto.randomUUID(),
+                        id: String(row.id || row.code || fallbackId),
                         name: row["name"] || row["الاسم"],
                         motherPhone: String(row["motherPhone"] || row["تليفون الأم"] || ""),
                         fatherPhone: String(row["fatherPhone"] || row["تليفون الأب"] || ""),

@@ -29,6 +29,9 @@ export default function ServantSelfCheckIn() {
 
     const [record, setRecord] = useState({
         uid: currentServant.uid || currentServant.phone,
+        phone: currentServant.phone ? String(currentServant.phone).trim() : "",
+        servantId: currentServant.id || "",
+        osraName: currentServant.assignedOsra || currentServant.osraName || "",
         name: currentServant.name || "خادم",
         weekDate,
         month: monthYear,
@@ -161,11 +164,16 @@ export default function ServantSelfCheckIn() {
                         <h2 className="text-sm font-bold text-indigo-300 mb-1">أهلاً بك يا،</h2>
                         <h1 className="text-2xl font-black text-white">{record.name}</h1>
                     </div>
-                    {currentServant.profileImage ? (
-                        <img src={currentServant.profileImage} alt={record.name} className="w-16 h-16 rounded-full object-cover border-2 border-indigo-400 shadow-md relative z-10" />
+                    {currentServant.photoURL || currentServant.profileImage || currentServant.profilePic ? (
+                        <img 
+                            src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} 
+                            alt={record.name} 
+                            className="w-16 h-16 rounded-full object-cover border-2 border-indigo-400 shadow-md relative z-10" 
+                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        />
                     ) : (
                         <div className="w-16 h-16 rounded-full bg-indigo-800 flex items-center justify-center text-indigo-300 relative z-10 border-2 border-indigo-500/30">
-                            <span className="text-xl font-bold">{record.name.substring(0, 2)}</span>
+                            <span className="text-xl font-bold">{(record.name || 'خ').substring(0, 2)}</span>
                         </div>
                     )}
                 </div>

@@ -30,7 +30,7 @@ import { collection, getDocs, doc, getDoc, updateDoc, setDoc, query, where, addD
 import { getAuth, updateProfile } from 'firebase/auth';
 import { firestore } from '../db/firebase';
 import { db } from '../db/database';
-import { uploadImageToCloudinary } from '../utils/cloudinary';
+import { uploadImageToCloudinary, uploadImageWithFallback, compressImageToBase64 } from '../utils/cloudinary';
 import { logActivity } from '../utils/activityLogger';
 
 const cleanPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^0+/, '');
@@ -561,8 +561,8 @@ export default function ServantProfile({ servantData = null, servant = null, isO
         setNotification({ type: '', message: '' });
 
         try {
-            const secureUrl = await uploadImageToCloudinary(file);
-            if (!secureUrl) throw new Error("لم يتم استلام رابط الصورة");
+            const secureUrl = await uploadImageWithFallback(file);
+            if (!secureUrl) throw new Error("لم يتم استلام رابط أو كود الصورة");
 
             // Update local UI immediately
             setProfile(prev => ({
@@ -577,10 +577,16 @@ export default function ServantProfile({ servantData = null, servant = null, isO
                 profilePic: secureUrl
             });
 
+            // ⚡ Broadcast real-time profile update event
+            window.dispatchEvent(new CustomEvent('servant-profile-updated', { 
+                detail: { servantId: profile.id, phone: profile.phone, photoURL: secureUrl } 
+            }));
+            window.dispatchEvent(new Event('storage'));
+
             setNotification({ type: 'success', message: 'تم تحديث الصورة الشخصية بنجاح! 📸' });
         } catch (err) {
             console.error("Failed to upload profile photo:", err);
-            setNotification({ type: 'error', message: 'فشل رفع الصورة: ' + (err.message || 'تأكد من الاتصال بالإنترنت وحاول ثانية') });
+            setNotification({ type: 'error', message: 'فشل معالجة الصورة: ' + (err.message || 'حاول ثانية') });
         } finally {
             setIsUploadingPhoto(false);
         }
@@ -595,6 +601,7 @@ export default function ServantProfile({ servantData = null, servant = null, isO
         try {
             const updatedFields = {
                 fatherConfessor: (editForm.fatherConfessor || '').trim(),
+                confessionFather: (editForm.fatherConfessor || '').trim(),
                 birthDate: editForm.birthDate || '',
                 address: (editForm.address || '').trim(),
                 notes: (editForm.notes || '').trim()
@@ -604,6 +611,13 @@ export default function ServantProfile({ servantData = null, servant = null, isO
 
             setProfile(prev => ({ ...prev, ...updatedFields }));
             setIsEditingProfile(false);
+
+            // ⚡ Broadcast real-time profile update event
+            window.dispatchEvent(new CustomEvent('servant-profile-updated', { 
+                detail: { servantId: profile.id, phone: profile.phone, updatedFields } 
+            }));
+            window.dispatchEvent(new Event('storage'));
+
             setNotification({ 
                 type: 'success', 
                 message: 'تم حفظ وتحديث البيانات الشخصية والروحية بنجاح ✝️' 
@@ -721,6 +735,7 @@ export default function ServantProfile({ servantData = null, servant = null, isO
                                 src={profile.photoURL} 
                                 alt={profile.name} 
                                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
                             />
                         ) : (
                             <div className="flex flex-col items-center justify-center text-indigo-400">
