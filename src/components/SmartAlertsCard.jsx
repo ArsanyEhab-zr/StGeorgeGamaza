@@ -8,6 +8,9 @@ import {
     BellRing, ChevronUp, ChevronDown, CalendarX, HeartHandshake,
     CheckCircle2, MessageCircle, X, Phone, CheckCircle, Clock
 } from 'lucide-react';
+import LogVisitationModal from './LogVisitationModal';
+import { getLocalDateString } from '../utils/serviceWeek';
+import { getVisitationInfo } from '../utils/visitationTypes';
 
 /**
  * 🚨 SmartAlertsCard — كارت التنبيهات الذكية والمتابعة الفورية
@@ -31,6 +34,7 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
     });
     const [alertFilter, setAlertFilter] = useState('all'); // 'all' | 'absence' | 'visitation'
     const [isActionLoading, setIsActionLoading] = useState(false);
+    const [visitingChild, setVisitingChild] = useState(null);
 
     const appSettingsStr = localStorage.getItem('appSettings');
     const appSettings = appSettingsStr ? JSON.parse(appSettingsStr) : {};
@@ -299,13 +303,16 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
             setIsActionLoading(true);
             const child = alertItem.child;
             const nowTs = Date.now();
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getLocalDateString();
             const nowIso = new Date().toISOString();
             const targetSyncKey = child.syncKey || currentSyncKey || 'default';
+            const typeInfo = getVisitationInfo('home_inside');
 
-            // 1. Update child profile in Dexie directly with timestamp
+            // 1. Update child profile in Dexie directly with timestamp and visitation type
             await updateChildInDexie(child.id, {
                 last_visited: nowTs,
+                lastVisitationType: 'home_inside',
+                lastVisitationLabel: typeInfo.label,
                 isDirty: true,
                 updatedAt: nowTs
             });
@@ -316,6 +323,9 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
                 childId: String(child.id),
                 type: 'visitation',
                 status: 'present',
+                visitationType: 'home_inside',
+                visitationLabel: typeInfo.label,
+                note: 'افتقاد فوري عبر كارت التنبيهات الذكية',
                 syncKey: targetSyncKey,
                 isDirty: true,
                 updatedAt: nowIso,
@@ -544,9 +554,9 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
                                             <button
                                                 type="button"
                                                 disabled={isActionLoading}
-                                                onClick={() => handleResolveAlert(item)}
-                                                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50"
-                                                title="تسجيل افتقاد فوري وحل التنبيه لجميع الخدام"
+                                                onClick={() => setVisitingChild(item.child)}
+                                                className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1.5 rounded-xl text-xs font-black shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                                                title="تسجيل افتقاد بنوع محدد وحل التنبيه لجميع الخدام"
                                             >
                                                 <CheckCircle size={14} /> تسجيل افتقاد
                                             </button>
@@ -554,7 +564,7 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
                                                 type="button"
                                                 disabled={isActionLoading}
                                                 onClick={() => handleSnoozeAlert(item)}
-                                                className="text-slate-400 hover:text-amber-600 p-1.5 rounded-lg hover:bg-amber-50 transition-colors flex items-center gap-1"
+                                                className="text-slate-400 hover:text-amber-600 p-1.5 rounded-lg hover:bg-amber-50 transition-colors flex items-center gap-1 cursor-pointer"
                                                 title="تأجيل التنبيه لمدة 7 أيام وإخفاؤه للجميع"
                                             >
                                                 <Clock size={15} />
@@ -567,6 +577,19 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* 🌟 نافذة اختيار نوع الافتقاد (Requirement #6) */}
+            {visitingChild && (
+                <LogVisitationModal
+                    isOpen={!!visitingChild}
+                    child={visitingChild}
+                    onClose={() => setVisitingChild(null)}
+                    onSuccess={() => {
+                        setVisitingChild(null);
+                        syncDataWithCloud().catch(err => console.warn('Sync failed:', err));
+                    }}
+                />
             )}
         </div>
     );

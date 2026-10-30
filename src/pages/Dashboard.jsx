@@ -14,14 +14,17 @@ import {
     ImagePlus, Loader2, Sparkles, BookOpen, UserPlus, Edit3, Trash2,
     Lock, Shirt, MapPin, DatabaseBackup, Save, FileSpreadsheet, ChevronRight, Phone, Search, Map, Calendar, Briefcase, StickyNote, Camera,
     LogOut, ShieldAlert, Download, AlertTriangle, RefreshCw, Music, CloudUpload, UserCheck, ClipboardList, Printer, Target, CheckSquare, CheckCircle, Plus, UserCircle,
-    BellRing, ChevronUp, ChevronDown, CalendarX, HeartHandshake, CheckCircle2, MessageCircle, X
+    BellRing, ChevronUp, ChevronDown, CalendarX, HeartHandshake, CheckCircle2, MessageCircle, X, FileText
 } from 'lucide-react';
 import ExcelImporter from '../components/ExcelImporter';
 import SmartAlertsCard from '../components/SmartAlertsCard';
+import ChildrenAttendanceReport from '../components/ChildrenAttendanceReport';
+import { getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
 import { deleteChildRecord } from '../db/sync';
+import { getCurrentServiceFridayDate, getServiceWeekRange, isWithinCurrentServiceWeek } from '../utils/serviceWeek';
 
 const getSettings = () => {
     const defaults = {
@@ -279,10 +282,17 @@ export default function Dashboard() {
                                 <p className="text-xs font-bold text-slate-500 mt-1">تحديث الصورة الشخصية، العنوان، ومتابعة سجل الحضور</p>
                             </Link>
 
-                            <button onClick={() => setCurrentView('stats')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-indigo-50 hover:border-indigo-200 transition-all flex flex-col items-center text-center group">
+                            <button onClick={() => setCurrentView('stats')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-indigo-50 hover:border-indigo-200 transition-all flex flex-col items-center text-center group cursor-pointer">
                                 <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><BarChart3 size={32} /></div>
                                 <h2 className="text-xl font-black text-slate-800">الإحصائيات والداتا</h2>
                                 <p className="text-xs font-bold text-slate-500 mt-1">سحب شيت الإكسيل، وتصفير العدادات</p>
+                            </button>
+
+                            {/* 🌟 كارت تقرير حضور وغياب المخدومين (شهري / سنوي) (Requirement #3) */}
+                            <button onClick={() => setCurrentView('reports')} className="bg-white p-6 rounded-[2.5rem] shadow-sm border-2 border-purple-50 hover:border-purple-200 transition-all flex flex-col items-center text-center group cursor-pointer">
+                                <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform"><FileText size={32} /></div>
+                                <h2 className="text-xl font-black text-slate-800">تقرير حضور وغياب المخدومين</h2>
+                                <p className="text-xs font-bold text-slate-500 mt-1">تقرير شهري وسنوي، نسب الغياب، وتصدير Excel</p>
                             </button>
 
                             {/* 🌟 New Card for Servants Follow-up */}
@@ -336,6 +346,21 @@ export default function Dashboard() {
                 )}
 
                 {currentView === 'stats' && <StatsView childrenData={children} appSettings={appSettings} />}
+                {currentView === 'reports' && (
+                    <div className="space-y-4">
+                        <button 
+                            onClick={() => setCurrentView('menu')} 
+                            className="text-xs font-black bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl flex items-center gap-1.5 hover:bg-slate-300 transition-colors cursor-pointer"
+                        >
+                            <ArrowRight size={15} /> عودة للوحة التحكم
+                        </button>
+                        <ChildrenAttendanceReport 
+                            childrenData={children} 
+                            appSettings={appSettings} 
+                            onBack={() => setCurrentView('menu')}
+                        />
+                    </div>
+                )}
                 {currentView === 'kids' && !isMaster && <KidsManagerView childrenData={children} />}
                 {currentView === 'activities' && !isMaster && <ActivitiesView />}
 
@@ -353,6 +378,7 @@ export default function Dashboard() {
 // ══════════════════════════════════════════════════════════════════════════════════════
 function StatsView({ childrenData, appSettings }) {
     const { triggerAutoSync } = useAutoSync();
+    const [statsTab, setStatsTab] = useState('overview'); // 'overview' | 'attendance_report'
     const total = childrenData.length;
     const boys = childrenData.filter(c => c.gender !== 'بنت').length;
     const girls = childrenData.filter(c => c.gender === 'بنت').length;
@@ -365,6 +391,34 @@ function StatsView({ childrenData, appSettings }) {
     const attendanceData = useLiveQuery(() => 
         db.attendance.filter(a => a.date && a.date.startsWith(currentYear.toString())).toArray()
     ) || [];
+
+    // 🌟 Anchored Friday-to-Friday service cycle counters (Requirement #8)
+    const currentServiceFriday = getCurrentServiceFridayDate();
+    const serviceWeek = getServiceWeekRange();
+
+    const weeklyStats = useMemo(() => {
+        const fridayAtt = attendanceData.filter(a => a.date === currentServiceFriday && !a.isDeleted);
+        const serviceCount = fridayAtt.filter(a => a.type === 'service' && a.status === 'present').length;
+        const liturgyCount = fridayAtt.filter(a => a.type === 'liturgy' && a.status === 'present').length;
+        const tasbehaCount = fridayAtt.filter(a => a.type === 'tasbeha' && a.status === 'present').length;
+
+        // Weekly visitations within Friday-to-Thursday range
+        const weekVisitations = attendanceData.filter(a => 
+            a.type === 'visitation' && 
+            !a.isDeleted && 
+            a.date >= serviceWeek.startDate && 
+            a.date <= serviceWeek.endDate
+        ).length;
+
+        return {
+            serviceCount,
+            liturgyCount,
+            tasbehaCount,
+            weekVisitations,
+            fridayDate: currentServiceFriday,
+            weekEndDate: serviceWeek.endDate
+        };
+    }, [attendanceData, currentServiceFriday, serviceWeek.startDate, serviceWeek.endDate]);
 
     // ─── 📊 1. حساب إحصائيات الحضور لجُمع الشهر الحالي ───
     const getFridaysOfCurrentMonth = () => {
@@ -397,11 +451,16 @@ function StatsView({ childrenData, appSettings }) {
         };
     });
 
-    // ─── 🏡 2. تجميع إحصائيات الافتقاد بالتواريخ ───
+    // ─── 🏡 2. تجميع إحصائيات الافتقاد بالتواريخ والأنواع (Requirement #6) ───
     const visitationsByDate = childrenData.reduce((acc, child) => {
         if (child.last_visited) {
-            if (!acc[child.last_visited]) acc[child.last_visited] = [];
-            acc[child.last_visited].push(child.name.split(' ')[0] + ' ' + (child.name.split(' ')[1] || ''));
+            const dateStr = formatLastVisitedDate(child.last_visited);
+            if (dateStr) {
+                if (!acc[dateStr]) acc[dateStr] = [];
+                const typeInfo = getVisitationInfo(child.lastVisitationType);
+                const firstName = (child.name || '').split(' ')[0];
+                acc[dateStr].push(`${firstName} (${typeInfo.shortLabel})`);
+            }
         }
         return acc;
     }, {});
@@ -459,8 +518,8 @@ function StatsView({ childrenData, appSettings }) {
                 "إجمالي حضور القداس": totalLiturgy,
                 "المواظبة المتتالية الحالية": c.streak || 0,
                 "آخر حضور قداس": c.last_liturgy || 'لم يحضر',
-                "آخر حضور خدمة": c.last_service || 'لم يحضر',
-                "آخر تاريخ افتقاد": c.last_visited || 'لم يُفتقد',
+                "آخر تاريخ افتقاد": formatLastVisitedDate(c.last_visited) || 'لم يُفتقد',
+                "نوع آخر افتقاد": c.lastVisitationLabel || (c.lastVisitationType ? getVisitationInfo(c.lastVisitationType).label : (c.last_visited ? 'افتـقـاد' : 'غير مسجل')),
                 "أب الاعتراف": c.fatherConfessor || 'غير مسجل',
                 "الرتبة الشماسية": c.gender === 'ولد' ? (c.isOrdained ? c.ordinationRank || 'شماس' : 'غير مرسوم') : 'غير مطبق',
                 "ملاحظات إضافية": c.specialNotes || 'لا يوجد',
@@ -472,7 +531,7 @@ function StatsView({ childrenData, appSettings }) {
 
         // تظبيط عرض العواميد
         const wscols = [
-            { wch: 5 }, { wch: 15 }, { wch: 25 }, { wch: 10 }, { wch: 40 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 20 }
+            { wch: 5 }, { wch: 15 }, { wch: 25 }, { wch: 10 }, { wch: 40 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 18 }, { wch: 18 }, { wch: 22 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 40 }, { wch: 20 }
         ];
         worksheet['!cols'] = wscols;
 
@@ -549,17 +608,85 @@ function StatsView({ childrenData, appSettings }) {
     return (
         <div className="animate-in slide-in-from-right-8 duration-300 space-y-6">
 
-            {/* 1. الكروت العلوية (ملخص الأرقام) */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center col-span-2">
-                    <Users className="text-indigo-50 mb-1 w-8 h-8" />
-                    <h3 className="text-slate-500 font-black text-xs">إجمالي المخدومين المقيدين</h3>
-                    <p className="text-3xl font-black text-slate-800">{total}</p>
-                    <div className="flex gap-4 mt-2 text-[10px] font-bold text-slate-600 bg-slate-50 px-4 py-1.5 rounded-full">
-                        <span>👦 {boys} ولاد</span><span>👧 {girls} بنات</span>
-                    </div>
-                </div>
+            {/* 🌟 شريط التبديل بين الإحصائيات العامة وتقرير الحضور والغياب (Requirement #3) */}
+            <div className="flex gap-2 bg-slate-200/60 p-1.5 rounded-2xl">
+                <button
+                    type="button"
+                    onClick={() => setStatsTab('overview')}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        statsTab === 'overview'
+                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                            : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <BarChart3 size={15} /> ملخص الإحصائيات العامة
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setStatsTab('attendance_report')}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        statsTab === 'attendance_report'
+                            ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
+                            : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                    <FileSpreadsheet size={15} /> تقرير الحضور والغياب (شهري / سنوي) 📊
+                </button>
             </div>
+
+            {statsTab === 'attendance_report' ? (
+                <ChildrenAttendanceReport 
+                    childrenData={childrenData} 
+                    appSettings={appSettings} 
+                />
+            ) : (
+                <>
+                    {/* 1. الكروت العلوية (ملخص الأرقام) */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 flex flex-col items-center col-span-2">
+                            <Users className="text-indigo-50 mb-1 w-8 h-8" />
+                            <h3 className="text-slate-500 font-black text-xs">إجمالي المخدومين المقيدين</h3>
+                            <p className="text-3xl font-black text-slate-800">{total}</p>
+                            <div className="flex gap-4 mt-2 text-[10px] font-bold text-slate-600 bg-slate-50 px-4 py-1.5 rounded-full">
+                                <span>👦 {boys} ولاد</span><span>👧 {girls} بنات</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* 🌟 ملخص أرقام أسبوع الخدمة الحالي (من الجمعة للخميس) (Requirement #8) */}
+                    <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white p-5 rounded-3xl shadow-md border border-indigo-800">
+                        <div className="flex items-center justify-between border-b border-indigo-800/80 pb-3 mb-4">
+                            <div className="flex items-center gap-2">
+                                <Calendar className="text-amber-400 w-5 h-5" />
+                                <div>
+                                    <h3 className="text-xs sm:text-sm font-black">نشاط أسبوع الخدمة الحالي</h3>
+                                    <p className="text-[10px] text-indigo-200 font-bold">دورة الأسبوع: الجمعة {weeklyStats.fridayDate} حتى الخميس {weeklyStats.weekEndDate}</p>
+                                </div>
+                            </div>
+                            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                                مستمر طوال الأسبوع
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
+                                <div className="text-emerald-400 font-black text-2xl">{weeklyStats.serviceCount}</div>
+                                <div className="text-[11px] font-bold text-slate-200 mt-0.5">حاضرين الخدمة</div>
+                            </div>
+                            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
+                                <div className="text-amber-400 font-black text-2xl">{weeklyStats.liturgyCount}</div>
+                                <div className="text-[11px] font-bold text-slate-200 mt-0.5">حضور القداس</div>
+                            </div>
+                            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
+                                <div className="text-cyan-400 font-black text-2xl">{weeklyStats.tasbehaCount}</div>
+                                <div className="text-[11px] font-bold text-slate-200 mt-0.5">حضور التسبحة</div>
+                            </div>
+                            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
+                                <div className="text-purple-400 font-black text-2xl">{weeklyStats.weekVisitations}</div>
+                                <div className="text-[11px] font-bold text-slate-200 mt-0.5">الافتقاد الأسبوعي</div>
+                            </div>
+                        </div>
+                    </div>
 
             {/* 📈 2. مؤشر حضور الشهر (رسم بياني) */}
             <div className="bg-white p-5 rounded-3xl shadow-sm border border-blue-100">
@@ -672,6 +799,8 @@ function StatsView({ childrenData, appSettings }) {
                         </button>
                     </div>
                 </div>
+            )}
+            </>
             )}
         </div>
     );

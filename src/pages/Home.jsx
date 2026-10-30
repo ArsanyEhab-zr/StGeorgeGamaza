@@ -12,6 +12,11 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Network } from '@capacitor/network';
 import { calculateExactAge } from '../utils/dateUtils';
 import { TENANT_CONFIG } from '../config/tenantConfig';
+import { getCurrentServiceFridayDate } from '../utils/serviceWeek';
+import { useWeeklyClassActivity } from '../hooks/useWeeklyClassActivity';
+import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlerts';
+import UrgentInterventionModal from '../components/UrgentInterventionModal';
+import WeeklyClassActivitySummary from '../components/WeeklyClassActivitySummary';
 
 export default function Home() {
     const navigate = useNavigate();
@@ -44,10 +49,17 @@ export default function Home() {
 
     const [activeWidget, setActiveWidget] = useState(localStorage.getItem('preferredWidget') || 'BIRTHDAYS');
 
+    // 🌟 Anchored to Friday-to-Friday service cycle (Requirement #8)
     const targetDate = useMemo(() => {
-        const d = new Date();
-        return d.toISOString().split('T')[0];
+        return getCurrentServiceFridayDate();
     }, []);
+
+    // 🌟 Real-time weekly class activity badges (Requirement #2)
+    const { activityByClass } = useWeeklyClassActivity();
+
+    // 🌟 Urgent pastoral intervention alerts & PWA badges (Requirement #1)
+    const { urgentCases, urgentCount, hasUrgentCases, permission, requestNotificationPermission } = useUrgentInterventionAlerts('all');
+    const [showUrgentModal, setShowUrgentModal] = useState(false);
 
     // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
     const allowedClasses = currentServant?.allowedClasses || [];
@@ -383,8 +395,34 @@ export default function Home() {
                             ) : null}
                         </div>
 
-                        {/* Left side (RTL): Settings gear & Profile icon grouped horizontally */}
+                        {/* Left side (RTL): Settings gear, Urgent alert & Profile icon grouped horizontally */}
                         <div className="flex items-center gap-2 shrink-0">
+                            {/* 🚨 Urgent Intervention Alert Badge for Priests & Admins (Requirement #1) */}
+                            {hasUrgentCases && (isMaster || isLeadership) && (
+                                <button
+                                    onClick={() => setShowUrgentModal(true)}
+                                    className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-black shadow-md shadow-red-500/30 hover:scale-105 active:scale-95 transition-all animate-bounce"
+                                    title="حالات التدخل العاجل للآباء الكهنة"
+                                >
+                                    <span className="relative flex h-2 w-2">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                    </span>
+                                    <span>🚨 تدخل عاجل ({urgentCount})</span>
+                                </button>
+                            )}
+
+                            {/* 🔔 One-click Notification Permission for Priests/Admins if default */}
+                            {permission === 'default' && (isMaster || currentServant.role === 'كاهن') && (
+                                <button
+                                    onClick={requestNotificationPermission}
+                                    className="hidden sm:flex text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100 px-2.5 py-1.5 rounded-full transition-colors items-center gap-1 shadow-2xs"
+                                    title="تفعيل إشعارات التدخل العاجل على الهاتف"
+                                >
+                                    🔔 تفعيل الإشعارات
+                                </button>
+                            )}
+
                             <Link 
                                 to="/servant-profile" 
                                 aria-label="الملف الشخصي" 
@@ -480,37 +518,68 @@ export default function Home() {
                 {/* 🌟 Classes Dashboard (Central Control Room) */}
                 {isMaster && (
                     <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* 📊 Compact Weekly Activity Summary Bar (Requirement #2) */}
+                        <WeeklyClassActivitySummary 
+                            classes={masterOsras} 
+                            activityByClass={activityByClass} 
+                            onClassClick={(osra) => handleEnterOsra(osra)} 
+                        />
+
                         <h2 className="text-xl font-black text-indigo-900 mb-4 flex items-center gap-2">
                             <Church className="text-amber-500" /> لوحة الفصول والأسر
                         </h2>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {masterOsras.length > 0 ? masterOsras.map((osra, i) => (
-                                <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
-                                    <div className="flex items-center gap-4 mb-5">
-                                        {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
-                                            <img 
-                                                src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
-                                                alt={osra.name} 
-                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm" 
-                                            />
-                                        ) : (
-                                            <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30">
-                                                {osra.name ? osra.name.charAt(0) : "ف"}
+                            {masterOsras.length > 0 ? masterOsras.map((osra, i) => {
+                                const act = activityByClass[osra.syncKey] || {};
+                                return (
+                                    <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
+                                        <div className="flex items-center gap-4 mb-3">
+                                            {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
+                                                <img 
+                                                    src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
+                                                    alt={osra.name} 
+                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                    className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm shrink-0" 
+                                                />
+                                            ) : (
+                                                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30 shrink-0">
+                                                    {osra.name ? osra.name.charAt(0) : "ف"}
+                                                </div>
+                                            )}
+                                            <div className="min-w-0">
+                                                <h3 className="text-white font-black text-lg truncate">{osra.name}</h3>
                                             </div>
-                                        )}
-                                        <div>
-                                            <h3 className="text-white font-black text-lg">{osra.name}</h3>
                                         </div>
+
+                                        {/* 🌟 Requirement #2: In-App Class Card Activity Badges */}
+                                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                                            {act.hasRecordedAttendance ? (
+                                                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1 shadow-xs">
+                                                    ✅ سجل الحضور ({act.presentCount})
+                                                </span>
+                                            ) : (
+                                                <span className="bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1">
+                                                    ⏳ لم يسجل الحضور بعد
+                                                </span>
+                                            )}
+
+                                            {act.hasRecordedVisitation ? (
+                                                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1 shadow-xs">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping inline-block" />
+                                                    🏡 افتقد ({act.visitationCount})
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        <button
+                                            onClick={() => handleEnterOsra(osra)}
+                                            className="w-full bg-amber-500 hover:bg-amber-400 text-indigo-950 py-3 rounded-2xl text-sm font-black shadow-md transition-colors flex items-center justify-center gap-2"
+                                        >
+                                            <Award size={18} /> الدخول كخادم للأسرة
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={() => handleEnterOsra(osra)}
-                                        className="w-full bg-amber-500 hover:bg-amber-400 text-indigo-950 py-3 rounded-2xl text-sm font-black shadow-md transition-colors flex items-center justify-center gap-2"
-                                    >
-                                        <Award size={18} /> الدخول كخادم للأسرة
-                                    </button>
-                                </div>
-                            )) : (
+                                );
+                            }) : (
                                 <div className="col-span-full text-center p-8 bg-white rounded-3xl shadow-sm border border-slate-100 text-slate-500 font-bold">
                                     لا توجد أسر مخصصة لك.
                                 </div>
@@ -835,6 +904,13 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* 🚨 Urgent Intervention Modal for Priests & Admins (Requirement #1) */}
+            <UrgentInterventionModal 
+                isOpen={showUrgentModal}
+                onClose={() => setShowUrgentModal(false)}
+                urgentCases={urgentCases}
+            />
         </div>
     );
 }

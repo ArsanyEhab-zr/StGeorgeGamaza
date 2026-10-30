@@ -240,7 +240,8 @@ function App() {
   const hideBottomNavPages = [
     '/dashboard', '/login', '/signup', '/admin', '/pdf-viewer', '/master-dashboard', '/info-directory',
     '/calendar', '/add-event', '/parent-login', '/parent-dashboard', '/qr-scan', '/qr-attendance', '/generate-cards',
-    '/master-logs', '/audit-logs', '/servant-profile', '/my-profile'
+    '/master-logs', '/audit-logs', '/servant-profile', '/my-profile',
+    '/servants-report', '/admin/servants-report', '/admin/servants-followup'
   ];
   // بنعمل فحص إضافي عشان مسار الـ event اللي بياخد ID متغير (/event/123)
   const isEventDetailsPage = location.pathname.startsWith('/event/');
@@ -311,6 +312,7 @@ function App() {
           <Route path="/admin" element={<ServantProtectedRoute><SystemAdmin /></ServantProtectedRoute>} />
           <Route path="/admin/servants-followup" element={<ServantProtectedRoute><ServantsFollowUp /></ServantProtectedRoute>} />
           <Route path="/admin/servants-report" element={<ServantProtectedRoute><ServantsMonthlyReport /></ServantProtectedRoute>} />
+          <Route path="/servants-report" element={<ServantProtectedRoute><ServantsMonthlyReport /></ServantProtectedRoute>} />
 
           {/* 🌟 مسارات المهام والأجندة */}
           <Route path="/calendar" element={<ServantProtectedRoute><CalendarPage /></ServantProtectedRoute>} />

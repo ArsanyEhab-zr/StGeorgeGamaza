@@ -35,15 +35,15 @@ export default function useSyncStatus() {
     // useLiveQuery re-fires automatically whenever any of these tables change
     const dirtyCount = useLiveQuery(async () => {
         try {
-            const [children, attendance, events, grades, hymns, exams] = await Promise.all([
-                db.children.where('isDirty').equals(1).count(),
-                db.attendance.where('isDirty').equals(1).count(),
-                db.events.where('isDirty').equals(1).count(),
-                db.grades.where('isDirty').equals(1).count(),
-                db.hymns.where('isDirty').equals(1).count(),
-                db.exams.where('isDirty').equals(1).count(),
+            const counts = await Promise.all([
+                db.children.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.attendance.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.events.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.grades.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.exams.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.activities.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
             ]);
-            return children + attendance + events + grades + hymns + exams;
+            return counts.reduce((acc, curr) => acc + curr, 0);
         } catch {
             return 0;
         }

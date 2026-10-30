@@ -6,6 +6,8 @@ import useAutoSync from '../hooks/useAutoSync';
 import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { logActivity } from '../utils/activityLogger';
 import { deleteChildRecord } from '../db/sync';
+import { VISITATION_TYPES, getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
+import { getLocalDateString } from '../utils/serviceWeek';
 
 const ChildProfile = () => {
     const { triggerAutoSync } = useAutoSync();
@@ -16,6 +18,7 @@ const ChildProfile = () => {
 
     const [isSaving, setIsSaving] = useState(false);
     const [aiSummary, setAiSummary] = useState('');
+    const [visitationType, setVisitationType] = useState('home_inside');
     const [isInterventionRequired, setIsInterventionRequired] = useState(false);
 
     const handleDeleteChild = async () => {
@@ -31,11 +34,17 @@ const ChildProfile = () => {
         setIsSaving(true);
         
         const now = new Date().toISOString();
+        const nowTs = Date.now();
+        const todayStr = getLocalDateString();
         const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
+        const typeInfo = getVisitationInfo(visitationType);
+
         const newNote = {
-            id: Date.now(),
+            id: nowTs,
             text: aiSummary,
             date: now,
+            visitationType: visitationType,
+            visitationLabel: typeInfo.label,
             requiresIntervention: isInterventionRequired,
             interventionStatus: isInterventionRequired ? 'pending' : 'resolved',
             servantName: currentServant.name || 'خادم غير معروف',
@@ -44,11 +53,30 @@ const ChildProfile = () => {
         };
         
         const updatedNotes = child.notes ? [...child.notes, newNote] : [newNote];
+        
+        // 1. Update child record with last_visited, lastVisitationType, lastVisitationLabel
         await db.children.update(childId, { 
             notes: updatedNotes, 
-            last_visited: now.split('T')[0],
+            last_visited: nowTs,
+            lastVisitationType: visitationType,
+            lastVisitationLabel: typeInfo.label,
             isDirty: true,
-            updatedAt: now
+            updatedAt: nowTs
+        });
+
+        // 2. Also log a visitation record in db.attendance
+        await db.attendance.add({
+            date: todayStr,
+            childId: String(childId),
+            type: 'visitation',
+            status: 'present',
+            visitationType: visitationType,
+            visitationLabel: typeInfo.label,
+            note: aiSummary,
+            syncKey: child.syncKey || currentServant.syncKey || 'default',
+            isDirty: true,
+            updatedAt: now,
+            isDeleted: false
         });
 
         setIsSaving(false);
@@ -59,8 +87,8 @@ const ChildProfile = () => {
 
         // 📋 Audit Trail: تسجيل حفظ تقرير الافتقاد
         const logDetails = isInterventionRequired
-            ? `إضافة تقرير افتقاد + طلب تدخل أبوي للمخدوم: ${child.name}`
-            : `إضافة تقرير افتقاد للمخدوم: ${child.name}`;
+            ? `إضافة تقرير ${typeInfo.label} + طلب تدخل أبوي للمخدوم: ${child.name}`
+            : `إضافة تقرير ${typeInfo.label} للمخدوم: ${child.name}`;
         logActivity(isInterventionRequired ? 'SAVE_NOTE_WITH_INTERVENTION' : 'SAVE_NOTE', logDetails);
 
         alert('تم حفظ تقرير الافتقاد في ملف المخدوم بنجاح! ✅');
@@ -102,6 +130,12 @@ const ChildProfile = () => {
                                 <span className={`px-2 py-0.5 rounded-full ${badgeBg} ${themeText} border ${themeBorder}`}>
                                     مواظبة: {child.streak} / 4
                                 </span>
+                                {child.last_visited && (
+                                    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-black flex items-center gap-1 shadow-2xs ${getVisitationInfo(child.lastVisitationType).badgeClass}`}>
+                                        <span>🕒 آخر افتقاد: {formatLastVisitedDate(child.last_visited)}</span>
+                                        <span>({child.lastVisitationLabel || getVisitationInfo(child.lastVisitationType).shortLabel})</span>
+                                    </span>
+                                )}
                                 {child.fatherPhone && <span className="flex items-center gap-1" title="تليفون الأب">👨 {child.fatherPhone}</span>}
                                 {child.motherPhone && <span className="flex items-center gap-1" title="تليفون الأم">👩 {child.motherPhone}</span>}
                                 {child.childPhone && <span className="flex items-center gap-1" title="تليفون المخدوم">👦 {child.childPhone}</span>}
@@ -124,7 +158,7 @@ const ChildProfile = () => {
                 </div>
 
 
-                {/* ─── 🎙️ المساعد الصوتي للافتقاد تم استبداله بمربع نص ─── */}
+                {/* ─── 🎙️ تقرير الافتقاد وتحديد نوعه ─── */}
                 <section className="bg-linear-to-br from-indigo-900 to-purple-900 p-6 md:p-8 rounded-[2.5rem] shadow-xl text-white relative overflow-hidden group mb-8">
                     <div className="absolute -left-10 -top-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl"></div>
 
@@ -135,10 +169,35 @@ const ChildProfile = () => {
 
                         <div className="mt-8 w-full bg-white/10 backdrop-blur-md p-5 rounded-3xl border border-white/20 text-right">
                                 <div className="animate-in fade-in slide-in-from-bottom-2 border-t border-white/10 pt-4">
+                                    {/* 🌟 3 أزرار لاختيار نوع الافتقاد (Requirement #6) */}
+                                    <div className="mb-4">
+                                        <label className="block text-xs font-black text-indigo-100 mb-2">نوع الافتقاد:</label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                            {VISITATION_TYPES.map(t => {
+                                                const isSelected = visitationType === t.id;
+                                                return (
+                                                    <button
+                                                        key={t.id}
+                                                        type="button"
+                                                        onClick={() => setVisitationType(t.id)}
+                                                        className={`p-2.5 rounded-2xl border text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                            isSelected
+                                                                ? 'bg-white text-indigo-950 border-white shadow-md font-black scale-102'
+                                                                : 'bg-white/10 text-white/80 border-white/20 hover:bg-white/20'
+                                                        }`}
+                                                    >
+                                                        <span>{t.icon}</span>
+                                                        <span>{t.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
                                     <textarea
                                         value={aiSummary}
                                         onChange={(e) => setAiSummary(e.target.value)}
-                                        className="w-full bg-black/20 text-white p-3 rounded-xl border border-white/10 text-sm focus:ring-2 focus:ring-purple-400 outline-none min-h-[150px] mb-4"
+                                        className="w-full bg-black/20 text-white p-3 rounded-xl border border-white/10 text-sm focus:ring-2 focus:ring-purple-400 outline-none min-h-[140px] mb-4"
                                         placeholder="اكتب تفاصيل الافتقاد هنا..."
                                     />
                                     <div className="flex items-center gap-2 mb-4 bg-amber-500/10 p-3 rounded-xl border border-amber-500/30">

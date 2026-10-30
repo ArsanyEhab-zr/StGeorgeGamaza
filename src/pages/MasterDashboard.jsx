@@ -7,16 +7,28 @@ import { db } from '../db/database';
 import { doc, getDoc, onSnapshot, setDoc, writeBatch, collectionGroup, getDocs, collection, deleteDoc } from 'firebase/firestore';
 import { encryptData, decryptData } from '../encryption';
 import { firestore } from '../db/firebase';
-import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3, ArrowLeftRight, ChevronDown, FileText } from 'lucide-react';
+import { ArrowRight, ShieldAlert, Users, Search, Phone, Crown, Layers, MessageCircle, UserCircle, Key, AlertTriangle, CheckCircle, RefreshCw, Trash2, Target, CheckSquare, Plus, Edit3, ArrowLeftRight, ChevronDown, FileText, Printer } from 'lucide-react';
 import ExcelExporter from '../components/ExcelExporter';
 import useAutoSync from '../hooks/useAutoSync';
 import { TENANT_CONFIG } from '../config/tenantConfig';
 import { logActivity } from '../utils/activityLogger';
 import ServantProfile from '../components/ServantProfile';
+import EditServantModal from '../components/EditServantModal';
+import { getCurrentServiceFridayDate } from '../utils/serviceWeek';
+import { useWeeklyClassActivity } from '../hooks/useWeeklyClassActivity';
+import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlerts';
+import WeeklyClassActivitySummary from '../components/WeeklyClassActivitySummary';
+import UrgentInterventionModal from '../components/UrgentInterventionModal';
 
 export default function MasterDashboard() {
     const navigate = useNavigate();
     const { triggerAutoSync } = useAutoSync();
+    const [editingServant, setEditingServant] = useState(null);
+
+    // 🌟 Weekly activity & urgent alerts (Requirements #2 & #1)
+    const { activityByClass } = useWeeklyClassActivity();
+    const { urgentCases, urgentCount, hasUrgentCases, permission, requestNotificationPermission } = useUrgentInterventionAlerts('all');
+    const [showUrgentModal, setShowUrgentModal] = useState(false);
 
     // 🔐 جلب الهوية الأساسية للخادم
     const currentSyncKey = localStorage.getItem('currentSyncKey');
@@ -445,12 +457,19 @@ export default function MasterDashboard() {
                 const updatedNotes = childToUpdate.notes.map(n => 
                     n.id === noteId ? { ...n, interventionStatus: 'resolved' } : n
                 );
-                await db.children.update(childId, {
+                const hasPendingNotes = updatedNotes.some(n => n.requiresIntervention && n.interventionStatus === 'pending');
+                const updates = {
                     notes: updatedNotes,
                     isDirty: true,
                     updatedAt: new Date().toISOString()
-                });
+                };
+                if (!hasPendingNotes) {
+                    updates.requiresIntervention = false;
+                    updates.interventionStatus = 'resolved';
+                }
+                await db.children.update(childId, updates);
                 logActivity('RESOLVE_INTERVENTION', `حل طلب تدخل أبوي للمخدوم: ${childToUpdate.name || childId}`);
+                triggerAutoSync();
             }
         } catch (error) {
             console.error('Error resolving intervention:', error);
@@ -473,16 +492,43 @@ export default function MasterDashboard() {
                             </p>
                         </div>
                     </div>
-                    {(isSuperAdmin || isPriest) && (
-                        <button 
-                            onClick={() => navigate('/master-logs')}
-                            className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 shrink-0"
-                            title="سجل النشاط المركزي"
-                        >
-                            <FileText size={16} className="text-amber-200" />
-                            <span className="hidden sm:inline">سجل النشاط</span>
-                        </button>
-                    )}
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* 🚨 Urgent Intervention Alert Badge for Priests & Admins (Requirement #1) */}
+                        {hasUrgentCases && (
+                            <button 
+                                onClick={() => setShowUrgentModal(true)}
+                                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md shadow-red-950/20 active:scale-95 transition-all animate-bounce shrink-0"
+                                title="حالات التدخل العاجل للآباء الكهنة"
+                            >
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                </span>
+                                <span>🚨 تدخل عاجل ({urgentCount})</span>
+                            </button>
+                        )}
+
+                        {permission === 'default' && (
+                            <button
+                                onClick={requestNotificationPermission}
+                                className="hidden md:flex text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white border border-white/30 px-2.5 py-1.5 rounded-2xl transition-colors items-center gap-1 shrink-0 backdrop-blur-md"
+                                title="تفعيل إشعارات التدخل العاجل على الهاتف"
+                            >
+                                🔔 تفعيل الإشعارات
+                            </button>
+                        )}
+
+                        {(isSuperAdmin || isPriest) && (
+                            <button 
+                                onClick={() => navigate('/master-logs')}
+                                className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 shrink-0"
+                                title="سجل النشاط المركزي"
+                            >
+                                <FileText size={16} className="text-amber-200" />
+                                <span className="hidden sm:inline">سجل النشاط</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
             </header>
 
@@ -685,10 +731,20 @@ export default function MasterDashboard() {
                                 </div>
                             )}
 
+                            {/* 📊 Compact Weekly Activity Summary Bar (Requirement #2) */}
+                            <div className="col-span-1 sm:col-span-2">
+                                <WeeklyClassActivitySummary 
+                                    classes={allowedOsras} 
+                                    activityByClass={activityByClass} 
+                                    onClassClick={(osra) => setSelectedOsraKey(osra.syncKey)} 
+                                />
+                            </div>
+
                             {/* 📂 كروت الأسر المنفصلة */}
                             {allowedOsras.map((osra) => {
                                 const countKids = children?.filter(c => c.syncKey === osra.syncKey).length || 0;
                                 const countServants = appSettings.servants?.filter(s => s.syncKey === osra.syncKey).length || 0;
+                                const act = activityByClass[osra.syncKey] || {};
                                 return (
                                     <div
                                         key={osra.syncKey}
@@ -702,12 +758,32 @@ export default function MasterDashboard() {
                                                 <Users className="w-full h-full p-4 text-slate-400" />
                                             )}
                                         </div>
-                                        <div className="flex-1">
-                                            <h3 className="font-black text-lg text-slate-800">{osra.name}</h3>
-                                            <p className="text-[10px] font-bold text-slate-500 mt-1 flex gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-black text-lg text-slate-800 truncate">{osra.name}</h3>
+                                            <p className="text-[10px] font-bold text-slate-500 mt-1 flex flex-wrap gap-2">
                                                 <span>أمين الأسرة: {osra.amin || 'غير محدد'}</span>
                                                 <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">👨‍🏫 {countServants} خدام</span>
                                             </p>
+
+                                            {/* 🌟 Requirement #2: In-App Class Card Activity Badges */}
+                                            <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                                {act.hasRecordedAttendance ? (
+                                                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-2xs">
+                                                        ✅ سجل الحضور ({act.presentCount})
+                                                    </span>
+                                                ) : (
+                                                    <span className="bg-slate-50 text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                                                        ⏳ لم يسجل بعد
+                                                    </span>
+                                                )}
+
+                                                {act.hasRecordedVisitation ? (
+                                                    <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-2xs">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping inline-block" />
+                                                        🏡 افتقد ({act.visitationCount})
+                                                    </span>
+                                                ) : null}
+                                            </div>
                                         </div>
                                         <div className="flex flex-col items-center justify-center bg-indigo-50 w-12 h-12 rounded-2xl shrink-0 group-hover:bg-amber-50 transition-colors">
                                             <span className="font-black text-indigo-700 group-hover:text-amber-700">{countKids}</span>
@@ -772,6 +848,26 @@ export default function MasterDashboard() {
                             </div>
                         )}
 
+                        {/* 🌟 أزرار الانتقال المباشر لتقارير ومتابعة الخدام 🌟 */}
+                        {viewMode === 'SERVANTS' && (
+                            <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                                <button 
+                                    type="button"
+                                    onClick={() => navigate('/servants-report')}
+                                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl font-black text-xs shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    <Printer size={16} /> تقرير اجتماع الخدام
+                                </button>
+                                <button 
+                                    type="button"
+                                    onClick={() => navigate('/admin/servants-followup')}
+                                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-xl font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                    <CheckSquare size={16} /> تسجيل اجتماع الخدام
+                                </button>
+                            </div>
+                        )}
+
                         <div className="space-y-3 pt-2">
                             {/* 🌟 عرض الخدام 🌟 */}
                             {viewMode === 'SERVANTS' ? (
@@ -820,6 +916,17 @@ export default function MasterDashboard() {
                                             </div>
 
                                             <div className="flex items-center gap-2 self-end md:self-center">
+                                                <button 
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingServant(servant);
+                                                    }}
+                                                    className="text-[11px] font-black text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200 transition-colors flex items-center gap-1 cursor-pointer"
+                                                    title="تعديل بيانات الخادم مباشرة"
+                                                >
+                                                    <Edit3 size={13} /> تعديل
+                                                </button>
                                                 <span className="text-[11px] font-black text-amber-700 bg-amber-50 group-hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200/60 transition-colors ml-2 hidden sm:inline-block">
                                                     عرض البروفايل 👤
                                                 </span>
@@ -987,6 +1094,32 @@ export default function MasterDashboard() {
                     isModal={true}
                 />
             )}
+
+            {/* 🌟 نافذة تعديل بيانات الخادم المباشرة 🌟 */}
+            {editingServant && (
+                <EditServantModal
+                    isOpen={!!editingServant}
+                    servant={editingServant}
+                    services={appSettings.services}
+                    onClose={() => setEditingServant(null)}
+                    onSaved={(updated) => {
+                        setAppSettings(prev => {
+                            const updatedList = (prev.servants || []).map(s => 
+                                (s.id === updated.id || (s.phone && s.phone === updated.phone)) ? { ...s, ...updated } : s
+                            );
+                            return { ...prev, servants: updatedList };
+                        });
+                        setEditingServant(null);
+                    }}
+                />
+            )}
+
+            {/* 🚨 Urgent Intervention Modal for Priests & Admins (Requirement #1) */}
+            <UrgentInterventionModal 
+                isOpen={showUrgentModal}
+                onClose={() => setShowUrgentModal(false)}
+                urgentCases={urgentCases}
+            />
         </div>
     );
 }

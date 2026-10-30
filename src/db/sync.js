@@ -474,14 +474,28 @@ const _syncDataWithCloud = async () => {
             const docId = `${cAtt.date}_${cAtt.childId}_${cAtt.type}`;
             if (pushedAttendanceIds.has(docId)) continue;
             
-            if (!localAttendanceMap.has(docId)) {
-                const { id: _id, ...dataToInsert } = cAtt;
-                const syncKeyToSave = (isAdmin || isStageAdmin) ? (dataToInsert.syncKey || currentSyncKey) : currentSyncKey;
-                await db.attendance.put({ ...dataToInsert, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
+            const localMatch = localAttendanceMap.get(docId);
+            const { id: _id, ...dataToSave } = cAtt;
+            const syncKeyToSave = (isAdmin || isStageAdmin) ? (dataToSave.syncKey || currentSyncKey) : currentSyncKey;
+
+            if (!localMatch) {
+                await db.attendance.put({ ...dataToSave, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
                 
                 const childInfo = await db.children.get(cAtt.childId);
                 const kidName = childInfo ? childInfo.name.split(' ')[0] : 'مخدوم';
                 pullLog.attendanceAdded.push(`${kidName}(${cAtt.date.slice(5)})`);
+            } else {
+                const cloudUpdated = cAtt.updatedAt || '1970-01-01T00:00:00.000Z';
+                if (cloudUpdated > lastSyncTime && !localMatch.isDirty) {
+                    await db.attendance.put({
+                        ...dataToSave,
+                        id: localMatch.id, // 🛡️ Preserve existing local primary key to prevent duplicate records
+                        syncKey: String(syncKeyToSave),
+                        isDirty: false,
+                        isDeleted: false,
+                        updatedAt: cAtt.updatedAt || now
+                    });
+                }
             }
         } } catch(e) { console.error('Error syncing attendance pull:', e); }
 

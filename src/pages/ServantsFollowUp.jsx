@@ -17,21 +17,33 @@ import {
     TrendingUp,
     Sparkles,
     Award,
-    HelpCircle
+    HelpCircle,
+    Edit3,
+    Printer
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, getDocs, onSnapshot, query, where, setDoc, deleteDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 import ServantProfile from '../components/ServantProfile';
+import EditServantModal from '../components/EditServantModal';
 
 const cleanPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^0+/, '');
 const cleanName = (n) => String(n || '').trim().replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/\s+/g, ' ');
+
+// 🌟 Requirement #7: Filter out Priests (الآباء الكهنة) from servants meeting roster
+const isPriestRecord = (s) => {
+    if (!s) return false;
+    if (s.role === 'priest' || s.isPriest === true || s.role === 'كاهن' || s.role === 'الاب الكاهن') return true;
+    const name = String(s.name || '').trim();
+    return name.startsWith('أبونا') || name.startsWith('ابونا') || name.startsWith('القمص') || name.startsWith('القس');
+};
 
 export default function ServantsFollowUp() {
     const navigate = useNavigate();
     const [search, setSearch] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [selectedServantForProfile, setSelectedServantForProfile] = useState(null);
+    const [editingServant, setEditingServant] = useState(null);
 
     const getOsraName = (key) => {
         if (!key || key === 'الكل') return key || "غير محدد";
@@ -180,6 +192,9 @@ export default function ServantsFollowUp() {
                 console.error("Error filtering active servants:", err);
             }
 
+            // 🚨 Requirement #7: Strictly exclude Priests (الآباء الكهنة) from servants meeting roster
+            baseServants = baseServants.filter(s => !isPriestRecord(s));
+
             setTotalServantCount(baseServants.length);
 
             // Prepare base servants map with strictly EMPTY attendance by default (NO "حضور" assumption!)
@@ -191,10 +206,16 @@ export default function ServantsFollowUp() {
                     uid: s.uid || sId,
                     phone: s.phone ? String(s.phone).trim() : "",
                     name: s.name,
-                    osraName: s.osraName || s.syncKey || "غير محدد",
+                    role: s.role || 'خادم',
+                    assignedOsra: s.assignedOsra || s.osraName || '',
+                    syncKey: s.syncKey || '',
+                    birthDate: s.birthDate || s.birthdate || '',
+                    confessionFather: s.confessionFather || s.fatherConfessor || '',
+                    osraName: s.osraName || s.assignedOsra || s.syncKey || "غير محدد",
                     weekDate,
                     month: weekDate.substring(0, 7),
                     attendance: "", // 🚨 STRICT: NO default "حضور" assumption! Empty by default.
+                    excuseNote: "",
                     hasExplicitRecord: false,
                     liturgy: false, 
                     preparation: false, 
@@ -244,6 +265,7 @@ export default function ServantsFollowUp() {
                             ...data,
                             id: matchedId,
                             attendance: isExplicit ? data.attendance : "",
+                            excuseNote: data.excuseNote || "",
                             hasExplicitRecord: isExplicit
                         };
                     }
@@ -297,6 +319,9 @@ export default function ServantsFollowUp() {
                         updated.meeting = false;
                         updated.visitation = false;
                     }
+                    if (value !== 'اعتذار') {
+                        updated.excuseNote = '';
+                    }
                 }
                 return updated;
             }
@@ -325,6 +350,7 @@ export default function ServantsFollowUp() {
                 // If reset to unrecorded / empty, delete document from ServantAttendance
                 await deleteDoc(doc(firestore, "ServantAttendance", docId));
             } else if (target.hasExplicitRecord) {
+                const statusVal = target.attendance === 'حضور' ? 'present' : target.attendance === 'اعتذار' ? 'excused' : target.attendance === 'غياب' ? 'absent' : target.attendance;
                 await setDoc(doc(firestore, "ServantAttendance", docId), {
                     id: target.id,
                     uid: recordUid,
@@ -334,6 +360,8 @@ export default function ServantsFollowUp() {
                     weekDate,
                     month: weekDate.substring(0, 7),
                     attendance: target.attendance,
+                    status: statusVal,
+                    excuseNote: target.excuseNote || "",
                     liturgy: target.liturgy || false,
                     preparation: target.preparation || false,
                     meeting: target.meeting || false,
@@ -359,6 +387,7 @@ export default function ServantsFollowUp() {
                 if (s.hasExplicitRecord) {
                     const recordUid = s.uid || s.phone || s.id;
                     const docId = `${weekDate}_${recordUid}`;
+                    const statusVal = s.attendance === 'حضور' ? 'present' : s.attendance === 'اعتذار' ? 'excused' : s.attendance === 'غياب' ? 'absent' : s.attendance;
                     await setDoc(doc(firestore, "ServantAttendance", docId), {
                         id: s.id,
                         uid: recordUid,
@@ -368,6 +397,8 @@ export default function ServantsFollowUp() {
                         weekDate,
                         month: weekDate.substring(0, 7),
                         attendance: s.attendance,
+                        status: statusVal,
+                        excuseNote: s.excuseNote || "",
                         liturgy: s.liturgy || false,
                         preparation: s.preparation || false,
                         meeting: s.meeting || false,
@@ -553,21 +584,31 @@ export default function ServantsFollowUp() {
             <header className="bg-slate-950 p-4 sticky top-0 z-50 shadow-lg rounded-b-[2.5rem] border-b border-slate-800">
                 <div className="max-w-7xl mx-auto flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <button onClick={() => navigate(-1)} className="w-10 h-10 bg-slate-800 text-slate-300 rounded-full flex items-center justify-center hover:bg-slate-700 transition-all shrink-0">
+                        <button onClick={() => navigate(-1)} className="w-10 h-10 bg-slate-800 text-slate-300 rounded-full flex items-center justify-center hover:bg-slate-700 transition-all shrink-0" title="رجوع">
                             <ArrowRight size={20} />
                         </button>
                         <div>
                             <h1 className="text-lg font-black text-emerald-400 flex items-center gap-2">
-                                <ClipboardList size={20} /> متابعة وتقييم الخدام
+                                <ClipboardList size={20} /> متابعة اجتماع الخدام
                             </h1>
                             <p className="text-xs font-bold text-slate-400">
-                                لوحة الإدارة المركزية (Super Admin)
+                                تسجيل ومتابعة حضور اجتماع الخدام الأسبوعي
                             </p>
                         </div>
                     </div>
-                    <button onClick={handleSave} disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-black transition-colors flex items-center gap-2 shadow-md">
-                        {isSaving ? "جاري الحفظ..." : <><Save size={16} /> حفظ التقييم</>}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => navigate('/servants-report')} 
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-xl text-xs font-black transition-colors flex items-center gap-1.5 shadow-md cursor-pointer"
+                            title="فتح التقرير الشامل لاجتماع الخدام"
+                        >
+                            <Printer size={16} />
+                            <span className="hidden sm:inline">تقرير الخدام</span>
+                        </button>
+                        <button onClick={handleSave} disabled={isSaving} className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-xl text-xs font-black transition-colors flex items-center gap-2 shadow-md cursor-pointer">
+                            {isSaving ? "جاري الحفظ..." : <><Save size={16} /> حفظ التقييم</>}
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -599,11 +640,11 @@ export default function ServantsFollowUp() {
                     <div className="mb-6 bg-slate-900 border border-slate-700/80 p-4 rounded-2xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
                         <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
                             <span className="text-base">📅</span>
-                            <span>تسجيل اليوم: <strong className="text-white">{getArabicDateText(weekDate)}</strong></span>
+                            <span>اجتماع الخدام: <strong className="text-white">{getArabicDateText(weekDate)}</strong></span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 text-xs font-black">
                             <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-3 py-1 rounded-xl">
-                                حضور اليوم: {dayStats.present}
+                                حضور: {dayStats.present}
                             </span>
                             <span className="bg-amber-500/20 text-amber-400 border border-amber-500/40 px-3 py-1 rounded-xl">
                                 اعتذار: {dayStats.excused}
@@ -623,9 +664,9 @@ export default function ServantsFollowUp() {
                             <thead className="bg-slate-900 text-slate-300 font-black border-b border-slate-700">
                                 <tr>
                                     <th className="p-4 text-center border-r border-slate-700 w-12">الصورة</th>
-                                    <th className="p-4 min-w-[150px]">اسم الخادم</th>
+                                    <th className="p-4 min-w-[170px]">اسم الخادم</th>
                                     <th className="p-4 min-w-[120px]">الأسرة</th>
-                                    <th className="p-4 text-center min-w-[130px]">الحضور العام</th>
+                                    <th className="p-4 text-center min-w-[150px]">حضور اجتماع الخدام</th>
                                     <th className="p-4 text-center">قداس</th>
                                     <th className="p-4 text-center">التحضير</th>
                                     <th className="p-4 text-center">اجتماع الخدمة</th>
@@ -668,15 +709,25 @@ export default function ServantsFollowUp() {
                                             </button>
                                         </td>
                                         <td className="p-4 font-black text-emerald-400">
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedServantForProfile(s)}
-                                                className="text-right hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-2 group"
-                                                title="عرض وتعديل بروفايل الخادم"
-                                            >
-                                                <span>{s.name}</span>
-                                                <Eye size={14} className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
-                                            </button>
+                                            <div className="flex items-center justify-between gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedServantForProfile(s)}
+                                                    className="text-right hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-1.5 group"
+                                                    title="عرض بروفايل الخادم"
+                                                >
+                                                    <span>{s.name}</span>
+                                                    <Eye size={14} className="opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingServant(s)}
+                                                    className="text-amber-400 hover:text-amber-300 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors shrink-0"
+                                                    title="تعديل بيانات الخادم"
+                                                >
+                                                    <Edit3 size={14} />
+                                                </button>
+                                            </div>
                                         </td>
                                         <td className="p-4 text-center">
                                             <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-1 rounded-lg text-xs font-bold whitespace-nowrap">
@@ -698,10 +749,19 @@ export default function ServantsFollowUp() {
                                                 }`}
                                             >
                                                 <option value="" className="bg-slate-900 text-slate-400">-- لم يُسجل --</option>
-                                                <option value="حضور" className="bg-slate-800 text-emerald-400">حضور</option>
-                                                <option value="غياب" className="bg-slate-800 text-red-400">غياب</option>
-                                                <option value="اعتذار" className="bg-slate-800 text-amber-400">اعتذار</option>
+                                                <option value="حضور" className="bg-slate-800 text-emerald-400">حاضر</option>
+                                                <option value="اعتذار" className="bg-slate-800 text-amber-400">معتذر</option>
+                                                <option value="غياب" className="bg-slate-800 text-red-400">غائب</option>
                                             </select>
+                                            {s.attendance === 'اعتذار' && (
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="سبب الاعتذار (اختياري)..." 
+                                                    value={s.excuseNote || ''} 
+                                                    onChange={e => handleUpdate(s.id, 'excuseNote', e.target.value)} 
+                                                    className="mt-1.5 w-full bg-slate-950 border border-amber-500/40 text-amber-300 placeholder-amber-500/50 rounded-lg p-1.5 text-[11px] font-bold outline-none focus:border-amber-400"
+                                                />
+                                            )}
                                         </td>
                                         <td className="p-4 text-center">
                                             <input type="checkbox" disabled={s.attendance !== 'حضور'} checked={s.liturgy} onChange={e => handleUpdate(s.id, 'liturgy', e.target.checked)} className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500 cursor-pointer accent-emerald-500 disabled:opacity-30 disabled:cursor-not-allowed" />
@@ -743,34 +803,55 @@ export default function ServantsFollowUp() {
                     <div className="md:hidden space-y-4 mt-4">
                         {filteredServants.map(s => (
                             <div key={s.id} className="bg-slate-900 border border-slate-700 p-4 rounded-2xl shadow-sm">
-                                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedServantForProfile(s)}
-                                        className="font-black text-emerald-400 text-lg hover:underline text-right flex items-center gap-2"
-                                        title="عرض وتعديل بروفايل الخادم"
-                                    >
-                                        <span>{s.name}</span>
-                                        <Eye size={16} className="text-slate-400" />
-                                    </button>
-                                    <select 
-                                        value={s.attendance || ''} 
-                                        onChange={e => handleUpdate(s.id, 'attendance', e.target.value)}
-                                        className={`p-1.5 rounded-lg text-xs font-black text-center outline-none border transition-colors ${
-                                            s.attendance === 'حضور' 
-                                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold' 
-                                                : s.attendance === 'غياب' 
-                                                    ? 'bg-red-500/10 text-red-400 border-red-500/30 font-bold' 
-                                                    : s.attendance === 'اعتذار' 
-                                                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-bold' 
-                                                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                                        }`}
-                                    >
-                                        <option value="" className="bg-slate-800 text-slate-400">-- لم يُسجل --</option>
-                                        <option value="حضور" className="bg-slate-800 text-emerald-400">حضور</option>
-                                        <option value="غياب" className="bg-slate-800 text-red-400">غياب</option>
-                                        <option value="اعتذار" className="bg-slate-800 text-amber-400">اعتذار</option>
-                                    </select>
+                                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-3 gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedServantForProfile(s)}
+                                            className="font-black text-emerald-400 text-base hover:underline text-right flex items-center gap-1.5"
+                                            title="عرض بروفايل الخادم"
+                                        >
+                                            <span>{s.name}</span>
+                                            <Eye size={15} className="text-slate-400" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingServant(s)}
+                                            className="text-amber-400 hover:text-amber-300 p-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors"
+                                            title="تعديل بيانات الخادم"
+                                        >
+                                            <Edit3 size={13} />
+                                        </button>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <select 
+                                            value={s.attendance || ''} 
+                                            onChange={e => handleUpdate(s.id, 'attendance', e.target.value)}
+                                            className={`p-1.5 rounded-lg text-xs font-black text-center outline-none border transition-colors ${
+                                                s.attendance === 'حضور' 
+                                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-bold' 
+                                                    : s.attendance === 'غياب' 
+                                                        ? 'bg-red-500/10 text-red-400 border-red-500/30 font-bold' 
+                                                        : s.attendance === 'اعتذار' 
+                                                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 font-bold' 
+                                                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                                            }`}
+                                        >
+                                            <option value="" className="bg-slate-800 text-slate-400">-- لم يُسجل --</option>
+                                            <option value="حضور" className="bg-slate-800 text-emerald-400">حاضر</option>
+                                            <option value="اعتذار" className="bg-slate-800 text-amber-400">معتذر</option>
+                                            <option value="غياب" className="bg-slate-800 text-red-400">غائب</option>
+                                        </select>
+                                        {s.attendance === 'اعتذار' && (
+                                            <input 
+                                                type="text" 
+                                                placeholder="سبب الاعتذار..." 
+                                                value={s.excuseNote || ''} 
+                                                onChange={e => handleUpdate(s.id, 'excuseNote', e.target.value)} 
+                                                className="w-full bg-slate-950 border border-amber-500/40 text-amber-300 placeholder-amber-500/50 rounded-lg p-1 text-[10px] font-bold outline-none"
+                                            />
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3 mb-4 text-sm text-slate-300 font-bold">
                                     <label className={`flex items-center gap-2 justify-between p-2 rounded-lg ${s.attendance === 'حضور' ? 'bg-slate-800' : 'bg-slate-800/50 opacity-50'}`}>
@@ -1065,6 +1146,19 @@ export default function ServantsFollowUp() {
                     isOpen={true}
                     onClose={() => setSelectedServantForProfile(null)}
                     isModal={true}
+                />
+            )}
+
+            {/* 🌟 تعديل بيانات الخادم مباشرة (Requirement #5) 🌟 */}
+            {editingServant && (
+                <EditServantModal
+                    isOpen={!!editingServant}
+                    servant={editingServant}
+                    onClose={() => setEditingServant(null)}
+                    onSaved={(updated) => {
+                        setServantsData(prev => prev.map(item => (item.id === updated.id || (item.phone && item.phone === updated.phone)) ? { ...item, ...updated } : item));
+                        setEditingServant(null);
+                    }}
                 />
             )}
         </div>

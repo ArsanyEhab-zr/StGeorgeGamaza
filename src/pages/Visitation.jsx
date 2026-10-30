@@ -6,6 +6,8 @@ import { Search, MapPin, ClipboardList, Navigation, MessageCircleWarning, CheckC
 import BottomNav from '../components/BottomNav';
 import useAutoSync from '../hooks/useAutoSync';
 import { logActivity } from '../utils/activityLogger';
+import LogVisitationModal from '../components/LogVisitationModal';
+import { getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
 
 export default function Visitation() {
     const { triggerAutoSync } = useAutoSync();
@@ -14,6 +16,7 @@ export default function Visitation() {
 
     // 🧠 حالة الطفل المحدد
     const [selectedChildId, setSelectedChildId] = useState(null);
+    const [visitingChild, setVisitingChild] = useState(null);
     const [isLocating, setIsLocating] = useState(false);
 
     const today = new Date().toISOString().split('T')[0];
@@ -164,7 +167,9 @@ export default function Visitation() {
                                 {zoneChildren.map(child => {
                                     const isDanger = child.streak === 0;
                                     const isSelected = selectedChildId === child.id;
-                                    const isVisitedRecently = child.last_visited === today;
+                                    const childLastVisitStr = formatLastVisitedDate(child.last_visited);
+                                    const isVisitedRecently = childLastVisitStr === today;
+                                    const lastVisitInfo = child.lastVisitationType ? getVisitationInfo(child.lastVisitationType) : null;
                                     const latestNote = child.notes ? child.notes[child.notes.length - 1] : null;
 
                                     return (
@@ -176,9 +181,13 @@ export default function Visitation() {
                                                     className={`group flex flex-col items-center transition-all duration-300 ${isSelected ? '-translate-y-2 scale-110' : 'hover:-translate-y-1'}`}
                                                 >
                                                     {isDanger && <span className="absolute -top-1 -right-1 flex h-4 w-4 z-10"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 border-2 border-white"></span></span>}
-                                                    {isVisitedRecently && <span className="absolute -top-1 -left-1 z-10 bg-green-500 text-white rounded-full p-0.5 shadow-sm"><CheckCircle2 size={12} /></span>}
+                                                    {isVisitedRecently && (
+                                                        <span className="absolute -top-1 -left-1 z-10 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm" title="تم الافتقاد اليوم">
+                                                            <CheckCircle2 size={12} />
+                                                        </span>
+                                                    )}
 
-                                                    <div className={`w-14 h-14 rounded-full border-4 ${isSelected ? 'border-indigo-600 shadow-xl shadow-indigo-500/40' : (isVisitedRecently ? 'border-green-400 opacity-70' : 'border-white shadow-md')} overflow-hidden bg-slate-100 flex items-center justify-center text-xl`}>
+                                                    <div className={`w-14 h-14 rounded-full border-4 ${isSelected ? 'border-indigo-600 shadow-xl shadow-indigo-500/40' : (isVisitedRecently ? 'border-emerald-400 opacity-80' : 'border-white shadow-md')} overflow-hidden bg-slate-100 flex items-center justify-center text-xl`}>
                                                         {child.profilePic ? (
                                                             <img 
                                                                 src={child.profilePic} 
@@ -191,7 +200,7 @@ export default function Visitation() {
                                                             />
                                                         ) : (child.gender === 'بنت' ? '👧' : '👦')}
                                                     </div>
-                                                    <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 ${isSelected ? 'border-t-indigo-600' : (isVisitedRecently ? 'border-t-green-400 opacity-70' : 'border-t-white')}`}></div>
+                                                    <div className={`w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 ${isSelected ? 'border-t-indigo-600' : (isVisitedRecently ? 'border-t-emerald-400 opacity-80' : 'border-t-white')}`}></div>
 
                                                     <span className={`text-[10px] font-black mt-1 px-2.5 py-0.5 rounded-full shadow-sm transition-colors max-w-[100px] truncate text-center ${isSelected ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700 group-hover:bg-slate-100'}`} title={child.name}>
                                                         {child.name ? child.name.trim().split(/\s+/).slice(0, 2).join(' ') : 'مخدوم'}
@@ -205,7 +214,7 @@ export default function Visitation() {
                                                     <div className="bg-white rounded-4xl p-5 border-2 border-indigo-100 shadow-xl relative overflow-hidden">
                                                         <div className="absolute top-0 right-0 w-full h-1.5 bg-indigo-500"></div>
 
-                                                        <div className="flex justify-between items-start mb-4">
+                                                        <div className="flex justify-between items-start mb-3">
                                                             <div>
                                                                 <h4 className="font-black text-lg text-slate-800">{child.name}</h4>
                                                                 <p className="text-xs font-bold text-slate-500 mt-0.5 flex items-center gap-1">
@@ -214,6 +223,23 @@ export default function Visitation() {
                                                             </div>
                                                             {child.streak === 0 && <span className="text-[10px] text-red-600 bg-red-50 px-2.5 py-1 rounded-lg font-black border border-red-100 animate-pulse">🚨 خطر تسرب!</span>}
                                                         </div>
+
+                                                        {/* 🌟 شارة تفصيلية لآخر افتقاد ونوعه (Requirement #6) */}
+                                                        {childLastVisitStr ? (
+                                                            <div className="bg-slate-50 p-3 rounded-2xl mb-3 border border-slate-200/80 flex items-center justify-between gap-2">
+                                                                <div className="text-right">
+                                                                    <span className="text-[10px] font-black text-slate-400 block">آخر افتقاد مسجل</span>
+                                                                    <span className="text-xs font-black text-slate-700">{childLastVisitStr}</span>
+                                                                </div>
+                                                                <span className={`text-[11px] font-black px-3 py-1 rounded-xl border flex items-center gap-1 shadow-xs ${lastVisitInfo ? lastVisitInfo.badgeClass : 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                                                                    {child.lastVisitationLabel || (lastVisitInfo ? lastVisitInfo.label : 'افتقاد عام')}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-slate-50 p-2.5 rounded-2xl mb-3 border border-dashed border-slate-200 text-center">
+                                                                <span className="text-[11px] font-bold text-slate-400">لم يتم تسجيل أي افتقاد له مسبقاً 📌</span>
+                                                            </div>
+                                                        )}
 
                                                         {/* 📍 زرار الـ GPS */}
                                                         <div className="bg-slate-50 p-3 rounded-2xl mb-4 border border-slate-100 flex items-center justify-between">
@@ -230,7 +256,7 @@ export default function Visitation() {
                                                                     <Map size={14} /> الخريطة
                                                                 </a>
                                                             ) : (
-                                                                <button onClick={() => handleSaveGPS(child)} aria-label="حفظ الموقع الحالي له" disabled={isLocating} className="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-md flex items-center gap-1">
+                                                                <button onClick={() => handleSaveGPS(child)} aria-label="حفظ الموقع الحالي له" disabled={isLocating} className="bg-indigo-600 text-white px-3 py-2 rounded-xl text-xs font-black hover:bg-indigo-700 transition-all shadow-md flex items-center gap-1 cursor-pointer">
                                                                     {isLocating ? <Loader2 size={14} className="animate-spin" /> : <Crosshair size={14} />} حفظ المكان
                                                                 </button>
                                                             )}
@@ -244,7 +270,7 @@ export default function Visitation() {
                                                             </div>
                                                         )}
 
-                                                        {/* 🌟 زراير الأكشن (ضفنا زرار للبروفايل عشان المايك) */}
+                                                        {/* 🌟 زراير الأكشن */}
                                                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
                                                             <a href={generateOnMyWayMsg(child)} target="_blank" rel="noreferrer" className="bg-yellow-400 text-yellow-900 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 shadow-sm hover:bg-yellow-500 transition-all">
                                                                 <Navigation size={14} /> جايلك
@@ -252,10 +278,17 @@ export default function Visitation() {
                                                             <a href={generateVisitationMsg(child)} target="_blank" rel="noreferrer" className="bg-green-500 text-white py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 shadow-md hover:bg-green-600 transition-all">
                                                                 <MessageCircleWarning size={14} /> رسالة
                                                             </a>
-                                                            <button onClick={() => markAsVisited(child)} disabled={isVisitedRecently} className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition-all ${isVisitedRecently ? 'bg-slate-200 text-slate-500' : 'bg-slate-800 text-white shadow-md hover:bg-slate-900'}`}>
-                                                                <CheckCircle2 size={14} /> {isVisitedRecently ? 'تم الافتقاد' : 'تأكيد'}
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => setVisitingChild(child)} 
+                                                                className={`py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                                                                    isVisitedRecently 
+                                                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' 
+                                                                        : 'bg-slate-800 text-white shadow-md hover:bg-slate-900'
+                                                                }`}
+                                                            >
+                                                                <CheckCircle2 size={14} /> {isVisitedRecently ? 'تم الافتقاد اليوم ✓' : 'تسجيل افتقاد'}
                                                             </button>
-                                                            {/* 🌟 الزرار الجديد اللي هيوديك للمايك الجبار */}
                                                             <Link to={`/profile/${child.id}`} className="bg-purple-100 text-purple-700 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-1 shadow-sm hover:bg-purple-200 transition-all border border-purple-200">
                                                                 <Mic size={14} /> تلخيص بالمايك
                                                             </Link>
@@ -271,6 +304,17 @@ export default function Visitation() {
                     ))}
                 </div>
             </main>
+
+            {/* 🌟 نافذة اختيار نوع الافتقاد (Requirement #6) */}
+            {visitingChild && (
+                <LogVisitationModal
+                    isOpen={!!visitingChild}
+                    child={visitingChild}
+                    onClose={() => setVisitingChild(null)}
+                    onSuccess={() => setVisitingChild(null)}
+                />
+            )}
+
             <BottomNav />
         </div>
     );

@@ -6,13 +6,14 @@ import {
     ShieldAlert, Key, Church, ImagePlus, Lock,
     Trash2, Save, Users, UserPlus, ArrowRight,
     Layers, PlusCircle, FileText, UserCircle, Loader2, BookOpen, X,
-    MessageCircle, CheckCircle, XCircle, Clock, WifiOff
+    MessageCircle, CheckCircle, XCircle, Clock, WifiOff, Edit3
 } from 'lucide-react';
 
 // 🌟 استدعاءات الفايربيز
 import { collection, getDocs, doc, deleteDoc, setDoc, getDoc, addDoc } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
 import { logActivity } from '../utils/activityLogger';
+import EditServantModal from '../components/EditServantModal';
 
 const getSettings = () => {
     const defaults = {
@@ -67,6 +68,7 @@ export default function SystemAdmin() {
     const [adminPasswordInput, setAdminPasswordInput] = useState("");
     const [form, setForm] = useState(getSettings());
     const [newServant, setNewServant] = useState({ name: '', role: 'خادم', email: '', phone: '', assignedOsra: '', syncKey: '', password: '', allowedClasses: [] });
+    const [editingServant, setEditingServant] = useState(null);
 
     const [curriculumModal, setCurriculumModal] = useState({ isOpen: false, sId: null, oId: null, osraName: '' });
     const [isUploadingPdf, setIsUploadingPdf] = useState(false);
@@ -783,10 +785,13 @@ export default function SystemAdmin() {
                                             </div>
         
                                             <div className="flex w-full md:w-auto gap-2">
-                                                <button type="button" onClick={() => sendWhatsappMessage(s?.name, s?.phone, s?.assignedOsra, s?.syncKey)} className="flex-1 md:flex-none bg-[#25D366] text-white px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 hover:bg-[#20b858] transition-all shadow-sm">
+                                                <button type="button" onClick={() => setEditingServant(s)} className="flex-1 md:flex-none bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 hover:bg-indigo-100 transition-all shadow-xs cursor-pointer">
+                                                    <Edit3 size={14} /> تعديل
+                                                </button>
+                                                <button type="button" onClick={() => sendWhatsappMessage(s?.name, s?.phone, s?.assignedOsra, s?.syncKey)} className="flex-1 md:flex-none bg-[#25D366] text-white px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 hover:bg-[#20b858] transition-all shadow-sm cursor-pointer">
                                                     <MessageCircle size={14} /> إرسال البيانات
                                                 </button>
-                                                <button type="button" onClick={() => handleRemoveServant(s?.id)} className="flex-1 md:flex-none bg-red-50 text-red-500 px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 hover:bg-red-100 transition-all">
+                                                <button type="button" onClick={() => handleRemoveServant(s?.id)} className="flex-1 md:flex-none bg-red-50 text-red-500 px-3 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 hover:bg-red-100 transition-all cursor-pointer">
                                                     <Trash2 size={14} /> مسح وحظر
                                                 </button>
                                             </div>
@@ -849,6 +854,23 @@ export default function SystemAdmin() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* 🌟 تعديل بيانات الخادم مباشرة (Requirement #5) 🌟 */}
+            {editingServant && (
+                <EditServantModal
+                    isOpen={!!editingServant}
+                    servant={editingServant}
+                    services={form.services}
+                    onClose={() => setEditingServant(null)}
+                    onSaved={(updated) => {
+                        const updatedList = (form.servants || []).map(serv => 
+                            (serv.id === updated.id || (serv.phone && serv.phone === updated.phone)) ? updated : serv
+                        );
+                        setForm(prev => ({ ...prev, servants: updatedList }));
+                        setEditingServant(null);
+                    }}
+                />
             )}
         </div>
     );

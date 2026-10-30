@@ -8,6 +8,7 @@ import { Search, Church, BookOpen, CheckCheck, X, MessageCircleWarning, History,
 import useAutoSync from '../hooks/useAutoSync';
 import BottomNav from '../components/BottomNav';
 import { logActivity } from '../utils/activityLogger';
+import { getCurrentServiceFridayDate, getLocalDateString } from '../utils/serviceWeek';
 
 export default function Attendance() {
     const { triggerAutoSync } = useAutoSync();
@@ -23,9 +24,9 @@ export default function Attendance() {
     React.useEffect(() => sessionStorage.setItem('attendance_filter', activeFilter), [activeFilter]);
     React.useEffect(() => sessionStorage.setItem('attendance_search', searchQuery), [searchQuery]);
 
+    // 🌟 Anchored to Friday-to-Friday service cycle (Requirement #8)
     const targetDate = useMemo(() => {
-        const d = new Date();
-        return d.toISOString().split('T')[0];
+        return getCurrentServiceFridayDate();
     }, []);
 
     const [selectedDate, setSelectedDate] = useState(() => {
@@ -48,7 +49,7 @@ export default function Attendance() {
         const d = new Date(selectedDate);
         if (!isNaN(d.getTime())) {
             d.setDate(d.getDate() - 7);
-            setSelectedDate(d.toISOString().split('T')[0]);
+            setSelectedDate(getLocalDateString(d));
         }
     };
 
@@ -56,7 +57,7 @@ export default function Attendance() {
     const attendanceRecords = useLiveQuery(() => db.attendance.where('date').equals(selectedDate).toArray(), [selectedDate]);
 
     const getAttendanceStatus = (childId, type) => {
-        const record = attendanceRecords?.find(a => a.childId === childId && a.type === type && !a.isDeleted);
+        const record = attendanceRecords?.find(a => String(a.childId) === String(childId) && a.type === type && !a.isDeleted);
         return record ? (record.status || 'present') : null;
     };
 
@@ -83,8 +84,8 @@ export default function Attendance() {
         return true;
     }) || [];
 
-    const liturgyCount = attendanceRecords?.filter(a => a.type === 'liturgy' && filteredChildren.some(c => c.id === a.childId)).length || 0;
-    const serviceCount = attendanceRecords?.filter(a => a.type === 'service' && filteredChildren.some(c => c.id === a.childId)).length || 0;
+    const liturgyCount = attendanceRecords?.filter(a => a.type === 'liturgy' && filteredChildren.some(c => String(c.id) === String(a.childId))).length || 0;
+    const serviceCount = attendanceRecords?.filter(a => a.type === 'service' && filteredChildren.some(c => String(c.id) === String(a.childId))).length || 0;
 
     const getReportData = () => {
         let list = [];
