@@ -12,7 +12,7 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Network } from '@capacitor/network';
 import { calculateExactAge } from '../utils/dateUtils';
 import { TENANT_CONFIG } from '../config/tenantConfig';
-import { getCurrentServiceFridayDate } from '../utils/serviceWeek';
+import { getCurrentServiceFridayDate, formatCopticDate } from '../utils/serviceWeek';
 import { useWeeklyClassActivity } from '../hooks/useWeeklyClassActivity';
 import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlerts';
 import UrgentInterventionModal from '../components/UrgentInterventionModal';
@@ -87,11 +87,7 @@ export default function Home() {
         // 🌟 1. تظبيط التواريخ
         const date = new Date();
         setGregorianDate(date.toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }));
-        try {
-            setCopticDate(new Intl.DateTimeFormat('ar-EG-u-ca-coptic', { day: 'numeric', month: 'long', year: 'numeric' }).format(date));
-        } catch (e) {
-            setCopticDate("التقويم القبطي");
-        }
+        setCopticDate(formatCopticDate(date));
 
         // 🌟 2. قراءة الداتا بذكاء من الـ appSettings (الاسم، اللوجو، المنهج، الـ PDF)
         const savedSettings = localStorage.getItem('appSettings');
@@ -339,152 +335,155 @@ export default function Home() {
                 <div className="absolute bottom-10 -left-20 w-100 h-100 rounded-full bg-amber-500/5 blur-[80px]" />
             </div>
 
-            <main className="relative z-10 max-w-4xl mx-auto px-4 pt-6">
+            <main className="relative z-10 max-w-4xl mx-auto px-4 pt-11 sm:pt-6">
 
-                <header className="bg-white/85 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] shadow-sm border border-slate-200/90 p-4 sm:p-6 mb-6">
-                    {/* 1. Header Top Row: Logos & Osra Badge on one side, Action icons side-by-side on the other */}
-                    <div className="flex items-center justify-between w-full gap-3">
-                        {/* Right side (RTL): Logos & Osra Badge */}
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="relative flex shrink-0">
-                                {!isMaster && (
-                                    appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
+                <header className="bg-white/90 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] shadow-sm border border-slate-200/90 p-4 sm:p-6 mb-6">
+                    <div className="flex flex-col gap-3">
+                        {/* Row 1 (Top Bar - Avatar, Role Pill & Action Icons) */}
+                        <div className="flex items-center justify-between gap-2 w-full">
+                            {/* Right side (RTL): Church/Osra avatar + Role pill */}
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="relative flex shrink-0">
+                                    {!isMaster && (
+                                        appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
+                                            <img 
+                                                src={appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
+                                                alt="لوجو الأسرة" 
+                                                width="40" 
+                                                height="40" 
+                                                loading="lazy" 
+                                                decoding="async" 
+                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                className="w-10 h-10 rounded-full border-2 border-white shadow-sm z-10 bg-slate-100 object-cover" 
+                                            />
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm z-10 bg-indigo-100 flex items-center justify-center text-sm font-black text-indigo-600">
+                                                {appSettings.osraName ? appSettings.osraName.charAt(0) : "أ"}
+                                            </div>
+                                        )
+                                    )}
+                                    {appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO ? (
                                         <img 
-                                            src={appSettings.osraLogo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
-                                            alt="لوجو الأسرة" 
-                                            width="44" 
-                                            height="44" 
+                                            src={appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO} 
+                                            alt="لوجو الخدمة" 
+                                            width="40" 
+                                            height="40" 
                                             loading="lazy" 
                                             decoding="async" 
                                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                            className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm z-10 bg-slate-100 object-cover" 
+                                            className={`w-10 h-10 rounded-full border-2 border-white shadow-sm bg-slate-100 object-cover ${!isMaster ? '-mr-3' : ''}`} 
                                         />
                                     ) : (
-                                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm z-10 bg-indigo-100 flex items-center justify-center text-base sm:text-lg font-black text-indigo-600">
-                                            {appSettings.osraName ? appSettings.osraName.charAt(0) : "أ"}
+                                        <div className={`w-10 h-10 rounded-full border-2 border-white shadow-sm bg-purple-100 flex items-center justify-center text-sm font-black text-purple-600 ${!isMaster ? '-mr-3' : ''}`}>
+                                            {appSettings.khedmaName ? appSettings.khedmaName.charAt(0) : "خ"}
                                         </div>
-                                    )
-                                )}
-                                {appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO ? (
-                                    <img 
-                                        src={appSettings.khedmaLogo || TENANT_CONFIG.DEFAULT_KHEDMA_LOGO} 
-                                        alt="لوجو الخدمة" 
-                                        width="44" 
-                                        height="44" 
-                                        loading="lazy" 
-                                        decoding="async" 
-                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                        className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm bg-slate-100 object-cover ${!isMaster ? '-mr-4 sm:-mr-5' : ''}`} 
-                                    />
-                                ) : (
-                                    <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-white shadow-sm bg-purple-100 flex items-center justify-center text-base sm:text-lg font-black text-purple-600 ${!isMaster ? '-mr-4 sm:-mr-5' : ''}`}>
-                                        {appSettings.khedmaName ? appSettings.khedmaName.charAt(0) : "خ"}
-                                    </div>
-                                )}
+                                    )}
+                                </div>
+
+                                {/* Role / Osra Badge */}
+                                {appSettings.osraName ? (
+                                    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-2xs truncate max-w-[160px] sm:max-w-xs">
+                                        {appSettings.osraName}
+                                    </span>
+                                ) : isMaster ? (
+                                    <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200/60 shadow-2xs truncate">
+                                        كل الأسر (صلاحية كاملة)
+                                    </span>
+                                ) : null}
                             </div>
 
-                            {/* Osra Badge */}
-                            {appSettings.osraName ? (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-2xs truncate">
-                                    {appSettings.osraName}
-                                </span>
-                            ) : isMaster ? (
-                                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-amber-50 text-amber-800 border border-amber-200/60 shadow-2xs">
-                                    لوحة الإدارة المركزية
-                                </span>
-                            ) : null}
+                            {/* Left side (RTL): Profile & Settings circular buttons */}
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Link 
+                                    to="/servant-profile" 
+                                    aria-label="الملف الشخصي" 
+                                    title="الملف الشخصي (بروفايلي)" 
+                                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ring-2 ring-indigo-500/20 hover:ring-indigo-500 text-indigo-700 flex justify-center items-center bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all shadow-xs overflow-hidden active:scale-95"
+                                >
+                                    {currentServant.photoURL || currentServant.profileImage || currentServant.profilePic ? (
+                                        <img 
+                                            src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} 
+                                            alt={currentServant.name} 
+                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            className="w-full h-full object-cover" 
+                                        />
+                                    ) : (
+                                        <User size={18} />
+                                    )}
+                                </Link>
+                                <Link 
+                                    to="/dashboard" 
+                                    aria-label="لوحة التحكم والإعدادات" 
+                                    title="لوحة التحكم والإعدادات"
+                                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 text-slate-600 flex justify-center items-center hover:bg-indigo-600 hover:text-white transition-all shadow-xs active:scale-95"
+                                >
+                                    <Settings size={18} />
+                                </Link>
+                            </div>
                         </div>
 
-                        {/* Left side (RTL): Settings gear, Urgent alert & Profile icon grouped horizontally */}
-                        <div className="flex items-center gap-2 shrink-0">
-                            {/* 🚨 Urgent Intervention Alert Badge for Priests & Admins (Requirement #1) */}
-                            {hasUrgentCases && (isMaster || isLeadership) && (
+                        {/* Row 2 (Church Title) */}
+                        <div className="w-full">
+                            <h1 className="text-base sm:text-lg font-bold text-indigo-950 leading-snug text-right">
+                                {TENANT_CONFIG.APP_NAME || "كنيسة الشهيد العظيم مارجرجس غمازة الكبرى"}
+                            </h1>
+                        </div>
+
+                        {/* Row 3 (Dedicated Urgent Intervention Bar) */}
+                        {(hasUrgentCases && (isMaster || isLeadership)) && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-1">
                                 <button
                                     onClick={() => setShowUrgentModal(true)}
-                                    className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-red-600 to-rose-600 text-white text-xs font-black shadow-md shadow-red-500/30 hover:scale-105 active:scale-95 transition-all animate-bounce"
+                                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white text-xs sm:text-sm font-black shadow-md shadow-red-500/20 hover:scale-[1.01] active:scale-95 transition-all"
                                     title="حالات التدخل العاجل للآباء الكهنة"
                                 >
-                                    <span className="relative flex h-2 w-2">
+                                    <span className="relative flex h-2.5 w-2.5">
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
                                     </span>
-                                    <span>🚨 تدخل عاجل ({urgentCount})</span>
+                                    <span>🚨 حالات التدخل العاجل للآباء الكهنة ({urgentCount})</span>
                                 </button>
-                            )}
 
-                            {/* 🔔 One-click Notification Permission for Priests/Admins if default */}
-                            {permission === 'default' && (isMaster || currentServant.role === 'كاهن') && (
-                                <button
-                                    onClick={requestNotificationPermission}
-                                    className="hidden sm:flex text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80 hover:bg-amber-100 px-2.5 py-1.5 rounded-full transition-colors items-center gap-1 shadow-2xs"
-                                    title="تفعيل إشعارات التدخل العاجل على الهاتف"
-                                >
-                                    🔔 تفعيل الإشعارات
-                                </button>
-                            )}
-
-                            <Link 
-                                to="/servant-profile" 
-                                aria-label="الملف الشخصي" 
-                                title="الملف الشخصي (بروفايلي)" 
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full ring-2 ring-indigo-500/20 hover:ring-indigo-500 text-indigo-700 flex justify-center items-center bg-indigo-50 hover:bg-indigo-600 hover:text-white transition-all shadow-xs overflow-hidden active:scale-95"
-                            >
-                                {currentServant.photoURL || currentServant.profileImage || currentServant.profilePic ? (
-                                    <img 
-                                        src={currentServant.photoURL || currentServant.profileImage || currentServant.profilePic} 
-                                        alt={currentServant.name} 
-                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                        className="w-full h-full object-cover" 
-                                    />
-                                ) : (
-                                    <User size={18} />
+                                {permission === 'default' && (isMaster || currentServant.role === 'كاهن') && (
+                                    <button
+                                        onClick={requestNotificationPermission}
+                                        className="w-full sm:w-auto text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-3 py-1.5 rounded-xl transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+                                        title="تفعيل إشعارات التدخل العاجل على الهاتف"
+                                    >
+                                        🔔 تفعيل إشعارات الهاتف
+                                    </button>
                                 )}
-                            </Link>
-                            <Link 
-                                to="/dashboard" 
-                                aria-label="لوحة التحكم والإعدادات" 
-                                title="لوحة التحكم والإعدادات"
-                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-100 text-slate-600 flex justify-center items-center hover:bg-indigo-600 hover:text-white transition-all shadow-xs active:scale-95"
-                            >
-                                <Settings size={18} />
-                            </Link>
-                        </div>
-                    </div>
-
-                    {/* 2. Church & Organization Name */}
-                    <div className="mt-3 sm:mt-4">
-                        <h1 className="text-sm sm:text-base font-bold text-indigo-950 leading-snug text-right">
-                            {appSettings.khedmaName || TENANT_CONFIG.APP_NAME || "خدمة مدارس الأحد"}
-                        </h1>
-                    </div>
-
-                    {/* 3. Date & Coptic Badges (Neat 2-column grid side-by-side) */}
-                    <div
-                        onClick={() => {
-                            localStorage.setItem('lastSeenGlobalEventTime', Date.now().toString());
-                            navigate('/calendar');
-                        }}
-                        className="mt-3 pt-3 border-t border-slate-100 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all group select-none relative"
-                        title="افتح أجندة الخدمة والمهام"
-                    >
-                        {unseenGlobalEventsCount > 0 && (
-                            <div className="absolute -top-2.5 right-2 z-10 flex items-center gap-1 bg-white px-2 py-0.5 rounded-full border border-red-200 shadow-xs">
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                </span>
-                                <span className="text-[10px] font-black text-red-600">حدث جديد</span>
                             </div>
                         )}
 
-                        <div className="grid grid-cols-2 gap-2 w-full">
-                            <div className="flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-700 bg-slate-100/90 px-2 py-1.5 rounded-xl group-hover:bg-blue-50 group-hover:text-blue-700 border border-slate-200/60 group-hover:border-blue-200 transition-colors shadow-2xs truncate">
-                                <CalendarDays size={13} className="text-blue-500 shrink-0 group-hover:scale-110 transition-transform" />
-                                <span className="truncate">{gregorianDate}</span>
-                            </div>
+                        {/* Row 4 (Date Badges) */}
+                        <div
+                            onClick={() => {
+                                localStorage.setItem('lastSeenGlobalEventTime', Date.now().toString());
+                                navigate('/calendar');
+                            }}
+                            className="pt-2 border-t border-slate-100 cursor-pointer hover:opacity-95 active:scale-[0.99] transition-all group select-none relative"
+                            title="افتح أجندة الخدمة والمهام"
+                        >
+                            {unseenGlobalEventsCount > 0 && (
+                                <div className="absolute -top-2.5 right-2 z-10 flex items-center gap-1 bg-white px-2 py-0.5 rounded-full border border-red-200 shadow-xs">
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                    </span>
+                                    <span className="text-[10px] font-black text-red-600">حدث جديد</span>
+                                </div>
+                            )}
 
-                            <div className="flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-bold text-amber-800 bg-amber-50/90 px-2 py-1.5 rounded-xl border border-amber-200/60 group-hover:bg-amber-100 transition-colors shadow-2xs truncate">
-                                <Church size={13} className="text-amber-600 shrink-0 group-hover:scale-110 transition-transform" />
-                                <span className="truncate">{copticDate}</span>
+                            <div className="grid grid-cols-2 gap-2.5 w-full">
+                                <div className="flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-700 bg-slate-100/90 px-3 py-2 rounded-xl group-hover:bg-blue-50 group-hover:text-blue-700 border border-slate-200/60 group-hover:border-blue-200 transition-colors shadow-2xs truncate">
+                                    <CalendarDays size={14} className="text-blue-500 shrink-0 group-hover:scale-110 transition-transform" />
+                                    <span className="truncate">{gregorianDate}</span>
+                                </div>
+
+                                <div className="flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-bold text-amber-800 bg-amber-50/90 px-3 py-2 rounded-xl border border-amber-200/60 group-hover:bg-amber-100 transition-colors shadow-2xs truncate">
+                                    <Church size={14} className="text-amber-600 shrink-0 group-hover:scale-110 transition-transform" />
+                                    <span className="truncate">{copticDate}</span>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { TENANT_CONFIG } from '../config/tenantConfig';
+import { getLocalDateString } from '../utils/serviceWeek';
 
 /**
  * Hook to manage Urgent Pastoral Intervention Alerts & PWA App Badges (Requirement #1)
@@ -116,17 +117,37 @@ export function useUrgentInterventionAlerts(activeClassKey = 'all') {
 
             attendanceRecords = (attendanceRecords || []).filter(r => !r.isDeleted);
 
-            // 3. Extract recorded Fridays
-            const fridaysSet = new Set();
+            // 3. Extract recorded service Fridays per class (syncKey)
+            // A class Friday is valid ONLY if there is at least 1 'service' attendance record on that Friday for that syncKey.
+            const classServiceFridaysMap = {};
             attendanceRecords.forEach(a => {
-                if (a.date) {
+                if (a.date && a.type === 'service') {
                     const d = new Date(a.date + 'T12:00:00');
                     if (d.getDay() === 5) {
-                        fridaysSet.add(a.date);
+                        const sk = String(a.syncKey || '');
+                        if (sk) {
+                            if (!classServiceFridaysMap[sk]) {
+                                classServiceFridaysMap[sk] = new Set();
+                            }
+                            classServiceFridaysMap[sk].add(a.date);
+                        }
                     }
                 }
             });
-            const recordedFridays = Array.from(fridaysSet).sort().reverse();
+
+            // Convert to sorted arrays descending (most recent recorded service Friday first)
+            const sortedClassFridays = {};
+            Object.keys(classServiceFridaysMap).forEach(sk => {
+                sortedClassFridays[sk] = Array.from(classServiceFridaysMap[sk]).sort().reverse();
+            });
+
+            // Build attendance lookup for fast O(1) check: `${childId}_${date}` -> attended
+            const childPresentSet = new Set();
+            attendanceRecords.forEach(a => {
+                if (a.date && a.childId && a.type === 'service' && a.status === 'present') {
+                    childPresentSet.add(`${String(a.childId)}_${a.date}`);
+                }
+            });
 
             // Build last visitation map from attendance
             const lastVisitationMap = {};
@@ -161,7 +182,7 @@ export function useUrgentInterventionAlerts(activeClassKey = 'all') {
                         osraName: getOsraName(child.syncKey),
                         missedFridaysCount: 3,
                         missedDates: [],
-                        lastVisited: lastVisitedTs ? new Date(lastVisitedTs).toISOString().split('T')[0] : null,
+                        lastVisited: lastVisitedTs ? getLocalDateString(lastVisitedTs) : null,
                         phone: child.phone,
                         fatherPhone: child.fatherPhone,
                         motherPhone: child.motherPhone,
@@ -177,48 +198,27 @@ export function useUrgentInterventionAlerts(activeClassKey = 'all') {
                     continue;
                 }
 
-                // Check 2: Consecutive missed Fridays (>= 3)
-                const classFridays = recordedFridays.filter(fDate => {
-                    return attendanceRecords.some(a => a.date === fDate && (isMaster || a.syncKey === child.syncKey));
-                });
+                // Check 2: Consecutive missed Fridays (>= 3 recorded service Fridays for that child's class)
+                const classFridays = sortedClassFridays[String(child.syncKey || '')] || [];
 
-                const targetFridays = classFridays.slice(0, 3);
-                let isConsecutiveAbsent = false;
-                let missedDates = [];
-
-                if (targetFridays.length >= 3) {
-                    const attendedAny = targetFridays.some(fDate => {
-                        return attendanceRecords.some(a =>
-                            String(a.childId) === String(child.id) &&
-                            a.date === fDate &&
-                            a.status === 'present'
-                        );
-                    });
-                    if (!attendedAny) {
-                        isConsecutiveAbsent = true;
-                        missedDates = targetFridays;
-                    }
-                } else {
-                    // Fallback using streak and last service/liturgy date
-                    const lastAttendedTs = Math.max(
-                        parseDateToMs(child.last_service),
-                        parseDateToMs(child.last_liturgy)
-                    );
-                    if (child.streak === 0 || (lastAttendedTs > 0 && lastAttendedTs <= twentyOneDaysAgoTs) || (!lastAttendedTs && child.streak === 0)) {
-                        isConsecutiveAbsent = true;
-                    }
+                // If the class has fewer than 3 recorded service dates in history, the child cannot have 3 consecutive absences
+                if (classFridays.length < 3) {
+                    continue;
                 }
 
-                if (isConsecutiveAbsent) {
+                const targetFridays = classFridays.slice(0, 3);
+                const attendedAny = targetFridays.some(fDate => childPresentSet.has(`${String(child.id)}_${fDate}`));
+
+                if (!attendedAny) {
                     cases.push({
                         child,
                         id: child.id,
                         name: child.name,
                         syncKey: child.syncKey,
                         osraName: getOsraName(child.syncKey),
-                        missedFridaysCount: missedDates.length >= 3 ? missedDates.length : 3,
-                        missedDates,
-                        lastVisited: lastVisitedTs ? new Date(lastVisitedTs).toISOString().split('T')[0] : null,
+                        missedFridaysCount: 3,
+                        missedDates: targetFridays,
+                        lastVisited: lastVisitedTs ? getLocalDateString(lastVisitedTs) : null,
                         phone: child.phone,
                         fatherPhone: child.fatherPhone,
                         motherPhone: child.motherPhone,

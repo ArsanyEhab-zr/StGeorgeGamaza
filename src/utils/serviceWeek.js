@@ -81,3 +81,40 @@ export const isWithinCurrentServiceWeek = (dateVal, refDate = new Date()) => {
     const dStr = String(dateVal).split('T')[0];
     return dStr >= startDate && dStr <= endDate;
 };
+
+/**
+ * Formats a date into a clean Arabic Coptic date string (e.g., '٢٠ بابه ١٧٤٣')
+ * stripping any era designations like AM/PM and ensuring standard Arabic month names.
+ */
+export const formatCopticDate = (d = new Date()) => {
+    try {
+        const target = (typeof d === 'number' || typeof d === 'string') ? new Date(d) : d;
+        if (isNaN(target.getTime())) return 'التقويم القبطي';
+        let str = new Intl.DateTimeFormat('ar-EG-u-ca-coptic', { day: 'numeric', month: 'long', year: 'numeric' }).format(target);
+
+        const monthsMap = {
+            'tout': 'توت', 'thout': 'توت',
+            'baba': 'بابه', 'paopi': 'بابه',
+            'hathor': 'هاتور', 'hatur': 'هاتور',
+            'kiahk': 'كيهك', 'koiak': 'كيهك',
+            'tobi': 'طوبة', 'tubah': 'طوبة', 'toubah': 'طوبة',
+            'meshir': 'أمشير', 'emshir': 'أمشير',
+            'paremhat': 'برمهات', 'baramhat': 'برمهات',
+            'paremoude': 'برمودة', 'baramouda': 'برمودة',
+            'pashons': 'بشنس', 'bashans': 'بشنس',
+            'paoni': 'بؤونة', 'baounah': 'بؤونة',
+            'epip': 'أبيب', 'abib': 'أبيب',
+            'mesori': 'مسرى', 'mesra': 'مسرى',
+            'nasie': 'نسئ', 'pi kogi enavot': 'نسئ'
+        };
+        Object.keys(monthsMap).forEach(m => {
+            str = str.replace(new RegExp(m, 'gi'), monthsMap[m]);
+        });
+        // Remove AM, PM, ERA, English characters
+        str = str.replace(/\b(AM|PM|ERA\d*|A\.M\.)\b/gi, '').replace(/[a-zA-Z]/g, '').trim();
+        str = str.replace(/\s+/g, ' ');
+        return str || 'التقويم القبطي';
+    } catch {
+        return 'التقويم القبطي';
+    }
+};

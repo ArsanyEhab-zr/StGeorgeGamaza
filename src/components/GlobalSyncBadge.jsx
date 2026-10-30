@@ -44,7 +44,7 @@ export default function GlobalSyncBadge() {
     if (!isOnline) {
         return (
             <div 
-                className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-slate-700/50 shadow-lg select-none transition-all duration-300 pointer-events-auto"
+                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-slate-700/50 shadow-lg select-none transition-all duration-300 pointer-events-auto"
                 dir="rtl"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -59,7 +59,7 @@ export default function GlobalSyncBadge() {
     if (syncState.status === 'idle') {
         return (
             <div 
-                className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 backdrop-blur-md border border-slate-200 shadow-sm cursor-pointer select-none transition-all duration-300 opacity-50 hover:opacity-100 pointer-events-auto hover:scale-105"
+                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 backdrop-blur-md border border-slate-200 shadow-sm cursor-pointer select-none transition-all duration-300 opacity-50 hover:opacity-100 pointer-events-auto hover:scale-105"
                 onClick={() => window.dispatchEvent(new CustomEvent('trigger-manual-sync'))}
                 title="اضغط للمزامنة الآن"
                 dir="rtl"
@@ -76,7 +76,7 @@ export default function GlobalSyncBadge() {
     if (syncState.status === 'syncing') {
         return (
             <div 
-                className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-amber-200 shadow-[0_0_15px_rgba(251,191,36,0.2)] select-none transition-all duration-300 pointer-events-auto"
+                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-amber-200 shadow-[0_0_15px_rgba(251,191,36,0.2)] select-none transition-all duration-300 pointer-events-auto"
                 dir="rtl"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -92,7 +92,7 @@ export default function GlobalSyncBadge() {
     if (syncState.status === 'success') {
         return (
             <div 
-                className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.2)] select-none transition-all duration-300 pointer-events-auto"
+                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.2)] select-none transition-all duration-300 pointer-events-auto"
                 dir="rtl"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
@@ -107,7 +107,7 @@ export default function GlobalSyncBadge() {
     if (syncState.status === 'error') {
         return (
             <div 
-                className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.2)] cursor-pointer select-none transition-all duration-300 hover:scale-105 pointer-events-auto"
+                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.2)] cursor-pointer select-none transition-all duration-300 hover:scale-105 pointer-events-auto"
                 title="تعذر المزامنة - اضغط لإعادة المحاولة"
                 onClick={() => window.dispatchEvent(new CustomEvent('trigger-manual-sync'))}
                 dir="rtl"

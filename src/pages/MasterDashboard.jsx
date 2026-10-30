@@ -480,55 +480,64 @@ export default function MasterDashboard() {
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20" dir="rtl">
             <header className="bg-linear-to-l from-amber-600 to-yellow-500 text-white p-4 sticky top-0 z-50 shadow-lg rounded-b-[2.5rem]">
-                <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md">
-                            <ArrowRight size={20} />
-                        </button>
-                        <div>
-                            <h1 className="text-lg font-black flex items-center gap-2"><Crown size={20} /> لوحة الإدارة الشاملة</h1>
-                            <p className="text-[10px] font-bold text-amber-100 mt-0.5">
-                                {selectedOsraKey && activeOsra ? `عرض بيانات: ${activeOsra.name}` : ((isSuperAdmin || isPriest) ? 'مراقبة جميع الأسر الكنسية' : 'مراقبة خدمتك الخاصة')}
-                            </p>
+                <div className="max-w-6xl mx-auto flex flex-col gap-3">
+                    {/* Row 1: Back Button, Title, and Action Logs */}
+                    <div className="flex items-center justify-between gap-3 w-full">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
+                                <ArrowRight size={20} />
+                            </button>
+                            <div className="min-w-0">
+                                <h1 className="text-base sm:text-lg font-black flex items-center gap-1.5 truncate">
+                                    <Crown size={18} className="shrink-0 text-amber-200" />
+                                    <span className="truncate">لوحة الإدارة الشاملة</span>
+                                </h1>
+                                <p className="text-[10px] sm:text-xs font-bold text-amber-100 truncate">
+                                    {selectedOsraKey && activeOsra ? `عرض بيانات: ${activeOsra.name}` : ((isSuperAdmin || isPriest) ? 'مراقبة جميع الأسر الكنسية' : 'مراقبة خدمتك الخاصة')}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                            {(isSuperAdmin || isPriest) && (
+                                <button 
+                                    onClick={() => navigate('/master-logs')}
+                                    className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 active:scale-95"
+                                    title="سجل النشاط المركزي"
+                                >
+                                    <FileText size={15} className="text-amber-200" />
+                                    <span className="hidden sm:inline">سجل النشاط</span>
+                                </button>
+                            )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        {/* 🚨 Urgent Intervention Alert Badge for Priests & Admins (Requirement #1) */}
-                        {hasUrgentCases && (
+
+                    {/* Row 2: Dedicated Urgent Intervention Bar if cases exist */}
+                    {hasUrgentCases && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-1 border-t border-white/20">
                             <button 
                                 onClick={() => setShowUrgentModal(true)}
-                                className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-md shadow-red-950/20 active:scale-95 transition-all animate-bounce shrink-0"
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-950/20 active:scale-95 transition-all animate-bounce"
                                 title="حالات التدخل العاجل للآباء الكهنة"
                             >
                                 <span className="relative flex h-2 w-2">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                                 </span>
-                                <span>🚨 تدخل عاجل ({urgentCount})</span>
+                                <span>🚨 حالات التدخل العاجل ({urgentCount})</span>
                             </button>
-                        )}
 
-                        {permission === 'default' && (
-                            <button
-                                onClick={requestNotificationPermission}
-                                className="hidden md:flex text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white border border-white/30 px-2.5 py-1.5 rounded-2xl transition-colors items-center gap-1 shrink-0 backdrop-blur-md"
-                                title="تفعيل إشعارات التدخل العاجل على الهاتف"
-                            >
-                                🔔 تفعيل الإشعارات
-                            </button>
-                        )}
-
-                        {(isSuperAdmin || isPriest) && (
-                            <button 
-                                onClick={() => navigate('/master-logs')}
-                                className="bg-white/20 hover:bg-white/30 text-white px-3.5 py-2 rounded-2xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 shrink-0"
-                                title="سجل النشاط المركزي"
-                            >
-                                <FileText size={16} className="text-amber-200" />
-                                <span className="hidden sm:inline">سجل النشاط</span>
-                            </button>
-                        )}
-                    </div>
+                            {permission === 'default' && (
+                                <button
+                                    onClick={requestNotificationPermission}
+                                    className="w-full sm:w-auto text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-xl transition-colors flex items-center justify-center gap-1 shrink-0 backdrop-blur-md"
+                                    title="تفعيل إشعارات التدخل العاجل على الهاتف"
+                                >
+                                    🔔 تفعيل الإشعارات
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </header>
 
