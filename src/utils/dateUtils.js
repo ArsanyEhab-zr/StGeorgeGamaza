@@ -52,4 +52,12 @@ export const calculateExactAge = (dateStr) => {
     return age;
 };
 
-export { getCurrentServiceFridayDate, getServiceWeekRange, isWithinCurrentServiceWeek } from './serviceWeek';
+export {
+    getLocalDateString,
+    isThursdayServiceClass,
+    getDefaultServiceDateForClass,
+    getCurrentServiceFridayDate,
+    getServiceWeekRange,
+    isWithinCurrentServiceWeek,
+    getElapsedServiceDatesForClass
+} from './serviceWeek';

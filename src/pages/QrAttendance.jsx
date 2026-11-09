@@ -5,6 +5,7 @@ import useQrScanner from '../hooks/useQrScanner';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
 import { logActivity } from '../utils/activityLogger';
+import { getCurrentServiceFridayDate } from '../utils/serviceWeek';
 import {
     Camera, CameraOff, Trash2, ArrowRight, Volume2, VolumeX,
     RotateCcw, ScanLine, CheckCircle2, XCircle, X,
@@ -36,7 +37,7 @@ export default function QrAttendance() {
     // ─── Session Config State ───
     const [stage, setStage] = useState(STAGE.CONFIG);
     const [eventType, setEventType] = useState(null); // 'liturgy' | 'service'
-    const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(() => getCurrentServiceFridayDate());
 
     // ─── Save State ───
     const [isSaving, setIsSaving] = useState(false);
@@ -111,11 +112,12 @@ export default function QrAttendance() {
                     const child = await db.children.get(childId);
                     const targetSyncKey = child?.syncKey || currentSyncKey;
 
-                    // 1. Insert attendance record
+                    // 1. Insert attendance record with explicit present status
                     await db.attendance.add({
                         date,
                         childId,
                         type,
+                        status: 'present',
                         syncKey: targetSyncKey,
                         isDirty: true,
                         updatedAt: now,
@@ -188,7 +190,7 @@ export default function QrAttendance() {
         if (wasSuccess) {
             scanner.clearAll();
             setEventType(null);
-            setSelectedDate(new Date().toISOString().split('T')[0]);
+            setSelectedDate(getCurrentServiceFridayDate());
             setStage(STAGE.CONFIG);
         }
     }, [saveResult, scanner]);

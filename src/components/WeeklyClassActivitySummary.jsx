@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Calendar, CheckCircle2, Home, Clock, ChevronDown, ChevronUp, Sparkles, AlertCircle } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
-export default function WeeklyClassActivitySummary({ classes = [], activityByClass = {}, onClassClick }) {
+export default function WeeklyClassActivitySummary({ classes = [], activityByClass = {}, classCounts = {}, onClassClick }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     if (!classes || classes.length === 0) return null;
@@ -10,7 +10,7 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
     let visitedCount = 0;
 
     classes.forEach(c => {
-        const key = String(c.syncKey || '');
+        const key = String(c.syncKey || '').trim();
         const act = activityByClass[key];
         if (act?.hasRecordedAttendance) attendedCount++;
         if (act?.hasRecordedVisitation) visitedCount++;
@@ -37,7 +37,7 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
                             )}
                         </h3>
                         <p className="text-[10px] font-bold text-slate-400">
-                            متابعة استمرارية دورة الجمعة للخميس الحالية
+                            متابعة دورة أسبوع الخدمة الحالي (من الخميس إلى الأربعاء)
                         </p>
                     </div>
                 </div>
@@ -68,11 +68,12 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
                 <div className="mt-3 pt-3 border-t border-slate-100">
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
                         {classes.map((c) => {
-                            const key = String(c.syncKey || '');
+                            const key = String(c.syncKey || '').trim();
                             const act = activityByClass[key];
                             const hasAtt = act?.hasRecordedAttendance;
                             const hasVis = act?.hasRecordedVisitation;
                             const pCount = act?.presentCount || 0;
+                            const totalKids = act?.totalActiveChildren ?? classCounts[key] ?? 0;
                             const vCount = act?.visitationCount || 0;
 
                             let pillBg = "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100";
@@ -93,11 +94,11 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
                                     <span className="font-black">{c.name}</span>
                                     {hasAtt ? (
                                         <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.2 rounded-md font-bold">
-                                            ✓ {pCount}
+                                            ✓ {pCount} / {totalKids}
                                         </span>
                                     ) : (
                                         <span className="text-slate-400 text-[10px]">
-                                            ⏳
+                                            ⏳ 0 / {totalKids}
                                         </span>
                                     )}
                                     {hasVis && (

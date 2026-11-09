@@ -9,8 +9,13 @@ import {
     CheckCircle2, MessageCircle, X, Phone, CheckCircle, Clock
 } from 'lucide-react';
 import LogVisitationModal from './LogVisitationModal';
-import { getLocalDateString } from '../utils/serviceWeek';
+import { getLocalDateString, isThursdayServiceClass } from '../utils/serviceWeek';
 import { getVisitationInfo } from '../utils/visitationTypes';
+import {
+    getCanonicalActiveChildren,
+    getConfiguredValidSyncKeys,
+    isAttendanceRecordPresent
+} from '../utils/churchDataEngine';
 
 /**
  * 🚨 SmartAlertsCard — كارت التنبيهات الذكية والمتابعة الفورية
@@ -94,37 +99,28 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
         const thirtyDaysAgoTs = nowTs - (30 * 24 * 60 * 60 * 1000);
         const targetKey = customSyncKey || currentSyncKey;
 
-        // 1. Scoped Children Query
-        let kids = [];
+        // 1. Scoped Canonical Active Children Query (SSOT)
+        const allRawKids = await db.children.toArray();
+        let allowedScope = null;
         if (isMaster) {
-            // If the Admin explicitly selected a specific class filter (e.g. 'St_Ephrem_2026')
             if (activeClassKey && activeClassKey !== 'MASTER_ACCESS' && activeClassKey !== 'ADMIN_MODE' && activeClassKey !== 'all') {
-                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
+                allowedScope = [activeClassKey];
             } else {
-                // Only show ALL children if no specific class is selected
-                kids = await db.children.toArray();
+                allowedScope = getConfiguredValidSyncKeys();
             }
         } else if (isStageAdmin) {
             if (activeClassKey && activeClassKey !== 'all' && allowedClasses.includes(activeClassKey)) {
-                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
+                allowedScope = [activeClassKey];
             } else {
-                if (allowedClasses.length === 0) return { absenceAlerts: [], visitationAlerts: [], allAlerts: [] };
-                kids = await db.children.where('syncKey').anyOf(allowedClasses).toArray();
+                if (allowedClasses.length === 0) return { absenceAlerts: [], visitationAlerts: [], allAlerts: [], totalCount: 0 };
+                allowedScope = allowedClasses;
             }
         } else if (targetKey) {
-            kids = await db.children.where('syncKey').equals(targetKey).toArray();
+            allowedScope = [targetKey];
         }
 
-        // Filter soft-deleted
-        kids = kids.filter(c => !c.isDeleted);
-
-        // For Master Admin showing all classes, filter out orphaned kids not in any active Osra
-        if (isMaster && (!activeClassKey || activeClassKey === 'all' || activeClassKey === 'MASTER_ACCESS' || activeClassKey === 'ADMIN_MODE')) {
-            const saved = localStorage.getItem('appSettings');
-            const settings = saved ? JSON.parse(saved) : {};
-            const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
-            kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
-        }
+        const canonicalData = getCanonicalActiveChildren(allRawKids, allowedScope);
+        let kids = canonicalData.activeChildren;
 
         // 🛑 Global Snooze / Dismiss filter: ignore children snoozed within the active window
         kids = kids.filter(c => {
@@ -134,78 +130,80 @@ export default function SmartAlertsCard({ activeClassKey = null, customSyncKey =
             return true;
         });
 
-        // 2. Scoped Attendance Query
-        let attendanceRecords = [];
-        if (isMaster) {
-            if (activeClassKey && activeClassKey !== 'MASTER_ACCESS' && activeClassKey !== 'ADMIN_MODE' && activeClassKey !== 'all') {
-                attendanceRecords = await db.attendance.where('syncKey').equals(activeClassKey).toArray();
-            } else {
-                attendanceRecords = await db.attendance.toArray();
-            }
-        } else if (isStageAdmin) {
-            if (activeClassKey && activeClassKey !== 'all' && allowedClasses.includes(activeClassKey)) {
-                attendanceRecords = await db.attendance.where('syncKey').equals(activeClassKey).toArray();
-            } else {
-                if (allowedClasses.length === 0) return { absenceAlerts: [], visitationAlerts: [], allAlerts: [] };
-                attendanceRecords = await db.attendance.where('syncKey').anyOf(allowedClasses).toArray();
-            }
-        } else if (targetKey) {
-            attendanceRecords = await db.attendance.where('syncKey').equals(targetKey).toArray();
-        }
-        attendanceRecords = attendanceRecords.filter(r => !r.isDeleted);
+        // 2. Scoped Attendance Query (strictly joined to canonical active children)
+        const rawAttendanceRecords = await db.attendance.toArray();
+        const attendanceRecords = rawAttendanceRecords.filter(r => {
+            if (!r || r.isDeleted === true || r.childId == null) return false;
+            return canonicalData.childMapById.has(String(r.childId).trim());
+        });
 
-        // 3. Extract recorded Fridays and meeting dates
-        const fridaysSet = new Set();
+        // 3. Extract recorded service dates (Thursday day=4 or Friday day=5) per class
+        const serviceDaysSet = new Set();
         const allDatesSet = new Set();
         attendanceRecords.forEach(a => {
             if (a.date) {
                 const d = new Date(a.date + 'T12:00:00');
-                if (d.getDay() === 5) {
-                    fridaysSet.add(a.date);
+                const day = d.getDay();
+                if (day === 4 || day === 5) {
+                    serviceDaysSet.add(a.date);
                 }
                 if (a.type === 'service' || a.type === 'liturgy') {
                     allDatesSet.add(a.date);
                 }
             }
         });
-        const recordedFridays = Array.from(fridaysSet).sort().reverse();
+        const recordedServiceDays = Array.from(serviceDaysSet).sort().reverse();
         const allRecordedDates = Array.from(allDatesSet).sort().reverse();
 
-        // 4. Consecutive Absences (last 3 Fridays)
+        // 4. Consecutive Absences (last 3 service days — Thursday or Friday depending on class)
         const absenceAlerts = kids.filter(child => {
-            const classFridays = recordedFridays.filter(fDate => {
-                return attendanceRecords.some(a => a.date === fDate && (isMaster || a.syncKey === child.syncKey));
+            const isThu = isThursdayServiceClass(child.syncKey);
+            const expectedDay = isThu ? 4 : 5;
+            const classServiceDays = recordedServiceDays.filter(sDate => {
+                const dObj = new Date(sDate + 'T12:00:00');
+                const matchesClassDay = dObj.getDay() === expectedDay || attendanceRecords.some(a => {
+                    const cMatch = canonicalData.childMapById.get(String(a.childId).trim());
+                    return a.date === sDate && cMatch && cMatch.syncKey === child.syncKey;
+                });
+                return matchesClassDay && attendanceRecords.some(a => {
+                    const cMatch = canonicalData.childMapById.get(String(a.childId).trim());
+                    return a.date === sDate && (isMaster || (cMatch && cMatch.syncKey === child.syncKey));
+                });
             });
 
-            const targetDates = classFridays.length >= 3
-                ? classFridays.slice(0, 3)
-                : (allRecordedDates.length >= 3 ? allRecordedDates.slice(0, 3) : classFridays);
+            const targetDates = classServiceDays.length >= 3
+                ? classServiceDays.slice(0, 3)
+                : (allRecordedDates.length >= 3 ? allRecordedDates.slice(0, 3) : classServiceDays);
 
             if (targetDates.length < 3) {
-                const explicitAbsents = attendanceRecords.filter(a => String(a.childId) === String(child.id) && a.status === 'absent');
+                const explicitAbsents = attendanceRecords.filter(a => String(a.childId).trim() === String(child.id).trim() && a.status === 'absent');
                 return explicitAbsents.length >= 3;
             }
 
             const attendedAny = targetDates.some(d => {
                 return attendanceRecords.some(a =>
-                    String(a.childId) === String(child.id) &&
+                    String(a.childId).trim() === String(child.id).trim() &&
                     a.date === d &&
-                    a.status === 'present'
+                    isAttendanceRecordPresent(a)
                 );
             });
 
             return !attendedAny;
         }).map(child => {
-            const classFridays = recordedFridays.filter(fDate => {
-                return attendanceRecords.some(a => a.date === fDate && (isMaster || a.syncKey === child.syncKey));
+            const isThu = isThursdayServiceClass(child.syncKey);
+            const classServiceDays = recordedServiceDays.filter(sDate => {
+                return attendanceRecords.some(a => {
+                    const cMatch = canonicalData.childMapById.get(String(a.childId).trim());
+                    return a.date === sDate && (isMaster || (cMatch && cMatch.syncKey === child.syncKey));
+                });
             });
-            const dates = (classFridays.length >= 3 ? classFridays : allRecordedDates).slice(0, 3);
+            const dates = (classServiceDays.length >= 3 ? classServiceDays : allRecordedDates).slice(0, 3);
             return {
                 id: `absence_${child.id}`,
                 childId: child.id,
                 type: 'absence',
                 child,
-                title: 'غياب 3 جمع متتالية',
+                title: isThu ? 'غياب 3 خميس متتالية' : 'غياب 3 جمع متتالية',
                 description: dates.length > 0 ? `غائب في أيام: ${dates.join(' ، ')}` : 'غياب متكرر عن الخدمة',
                 severity: 'danger',
                 dates

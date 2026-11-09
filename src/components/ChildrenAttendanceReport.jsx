@@ -4,11 +4,18 @@ import { db } from '../db/database';
 import * as XLSX from 'xlsx';
 import { 
     Calendar, Download, Printer, Search, Users, CheckCircle2, 
-    XCircle, TrendingUp, Sparkles, Filter, ChevronDown, ArrowRight,
-    MapPin, Phone
+    TrendingUp, ArrowRight, Phone
 } from 'lucide-react';
-import { VISITATION_TYPES, getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
-import { getLocalDateString } from '../utils/serviceWeek';
+import { getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
+import {
+    getLocalDateString,
+    isThursdayServiceClass,
+    getElapsedServiceDatesForClass
+} from '../utils/serviceWeek';
+import {
+    getCanonicalActiveChildren,
+    isAttendanceRecordPresent
+} from '../utils/churchDataEngine';
 
 const MONTHS_AR = [
     { value: 1, label: 'يناير (1)' },
@@ -46,67 +53,44 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedOsraFilter, setSelectedOsraFilter] = useState('all');
 
-    // 🌟 Calculate Elapsed Fridays in the selected period (occurred up to today)
-    const elapsedFridays = useMemo(() => {
-        let startDate, endDate;
-
+    // Compute period date bounds
+    const periodBounds = useMemo(() => {
         if (periodMode === 'monthly') {
             const mPad = String(selectedMonth).padStart(2, '0');
-            startDate = new Date(`${selectedYear}-${mPad}-01`);
+            const startBound = `${selectedYear}-${mPad}-01`;
             const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
-            endDate = new Date(`${selectedYear}-${mPad}-${String(lastDay).padStart(2, '0')}`);
-        } else if (periodMode === 'yearly') {
-            startDate = new Date(`${selectedYear}-01-01`);
-            endDate = new Date(`${selectedYear}-12-31`);
-        } else {
-            startDate = fromDate ? new Date(fromDate) : new Date(todayStr);
-            endDate = toDate ? new Date(toDate) : new Date(todayStr);
+            const endBound = `${selectedYear}-${mPad}-${String(lastDay).padStart(2, '0')}`;
+            return { startBound, endBound };
         }
-
-        const fridays = [];
-        const cur = new Date(startDate);
-        const end = new Date(endDate);
-        cur.setHours(12, 0, 0, 0);
-        end.setHours(12, 0, 0, 0);
-
-        while (cur <= end) {
-            if (cur.getDay() === 5) { // Friday
-                const yyyy = cur.getFullYear();
-                const mm = String(cur.getMonth() + 1).padStart(2, '0');
-                const dd = String(cur.getDate()).padStart(2, '0');
-                const dateString = `${yyyy}-${mm}-${dd}`;
-                if (dateString <= todayStr) {
-                    fridays.push(dateString);
-                }
-            }
-            cur.setDate(cur.getDate() + 1);
+        if (periodMode === 'yearly') {
+            return {
+                startBound: `${selectedYear}-01-01`,
+                endBound: `${selectedYear}-12-31`
+            };
         }
-        return fridays.sort();
+        return {
+            startBound: fromDate || '2000-01-01',
+            endBound: toDate || todayStr
+        };
     }, [periodMode, selectedYear, selectedMonth, fromDate, toDate, todayStr]);
 
-    // 🌟 Fetch scoped attendance from Dexie
-    const attendanceRecords = useLiveQuery(async () => {
-        let startBound, endBound;
-        if (periodMode === 'monthly') {
-            const mPad = String(selectedMonth).padStart(2, '0');
-            startBound = `${selectedYear}-${mPad}-01`;
-            const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
-            endBound = `${selectedYear}-${mPad}-${String(lastDay).padStart(2, '0')}`;
-        } else if (periodMode === 'yearly') {
-            startBound = `${selectedYear}-01-01`;
-            endBound = `${selectedYear}-12-31`;
-        } else {
-            startBound = fromDate || '2000-01-01';
-            endBound = toDate || todayStr;
-        }
+    // 🌟 Canonical Active Children from SSOT Engine
+    const canonicalData = useMemo(() => {
+        return getCanonicalActiveChildren(childrenData);
+    }, [childrenData]);
 
+    const activeKids = canonicalData.activeChildren;
+
+    // 🌟 Fetch scoped attendance from Dexie within periodBounds
+    const attendanceRecords = useLiveQuery(async () => {
+        const { startBound, endBound } = periodBounds;
         const records = await db.attendance
             .where('date')
             .between(startBound, endBound, true, true)
             .toArray();
 
-        return records.filter(r => !r.isDeleted);
-    }, [periodMode, selectedYear, selectedMonth, fromDate, toDate, todayStr]) || [];
+        return (records || []).filter(r => !r.isDeleted);
+    }, [periodBounds.startBound, periodBounds.endBound]) || [];
 
     // Helper to resolve Osra Name
     const getOsraName = (child) => {
@@ -114,7 +98,7 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
         if (child.assignedOsra) return child.assignedOsra;
         const services = appSettings.services || [];
         for (const s of services) {
-            const found = (s.osras || []).find(o => o.syncKey === child.syncKey);
+            const found = (s.osras || []).find(o => String(o.syncKey).trim() === String(child.syncKey).trim());
             if (found) return found.name;
         }
         return child.syncKey || 'غير محدد';
@@ -123,51 +107,106 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
     // Filter available Osras
     const availableOsras = useMemo(() => {
         const set = new Set();
-        childrenData.forEach(c => {
+        activeKids.forEach(c => {
             const name = getOsraName(c);
             if (name) set.add(name);
         });
         return Array.from(set).sort();
-    }, [childrenData, appSettings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeKids, appSettings]);
 
-    // 🌟 Compute Per-Child Attendance & Absence Metrics
-    const computedReport = useMemo(() => {
-        const fridaysSet = new Set(elapsedFridays);
-        const totalFridays = elapsedFridays.length;
+    // 🌟 Compute Per-Child Attendance & Absence Metrics (supporting both Thursday & Friday classes!)
+    const { computedReport, summaryServiceDates } = useMemo(() => {
+        const { startBound, endBound } = periodBounds;
+        const { childMapById } = canonicalData;
 
-        // Group attendance by childId
+        // Deduplicate attendance rows by (date, canonicalChildId, type) and group by canonicalChildId
+        const dedupedByKey = new Map();
+        for (const r of attendanceRecords) {
+            if (!r || r.isDeleted === true || !r.date || !r.type || r.childId == null) continue;
+            const canonicalChild = childMapById.get(String(r.childId).trim());
+            if (!canonicalChild) continue; // Ignore orphaned/deleted children
+
+            const cid = String(canonicalChild.id).trim();
+            const dStr = String(r.date).split('T')[0];
+            const key = `${dStr}::${cid}::${r.type}`;
+            const existing = dedupedByKey.get(key);
+            if (!existing) {
+                dedupedByKey.set(key, { record: r, canonicalChild, cid, dStr });
+            } else {
+                const t1 = existing.record.updatedAt ? new Date(existing.record.updatedAt).getTime() : 0;
+                const t2 = r.updatedAt ? new Date(r.updatedAt).getTime() : 0;
+                if (t2 >= t1) {
+                    dedupedByKey.set(key, { record: r, canonicalChild, cid, dStr });
+                }
+            }
+        }
+
         const attByChild = {};
-        attendanceRecords.forEach(r => {
-            const cid = String(r.childId);
+        const actualServiceDatesByClass = new Map();
+
+        for (const { record: r, canonicalChild, cid, dStr } of dedupedByKey.values()) {
             if (!attByChild[cid]) attByChild[cid] = [];
-            attByChild[cid].push(r);
-        });
+            attByChild[cid].push({ ...r, date: dStr });
 
-        const activeKids = childrenData.filter(c => !c.isDeleted);
+            if (r.type === 'service' && isAttendanceRecordPresent(r)) {
+                const sKey = canonicalChild.syncKey;
+                if (!actualServiceDatesByClass.has(sKey)) {
+                    actualServiceDatesByClass.set(sKey, new Set());
+                }
+                actualServiceDatesByClass.get(sKey).add(dStr);
+            }
+        }
 
-        return activeKids.map((c, index) => {
-            const cid = String(c.id);
+        // Precompute elapsed service dates per class (Thursdays for Thursday classes, Fridays for Friday classes, + any actual recorded service dates)
+        const serviceDatesByClass = new Map();
+        const allSummaryDatesSet = new Set();
+
+        for (const c of activeKids) {
+            const sKey = c.syncKey;
+            if (!serviceDatesByClass.has(sKey)) {
+                const osraName = getOsraName(c);
+                const actualDates = Array.from(actualServiceDatesByClass.get(sKey) || []);
+                const elapsed = getElapsedServiceDatesForClass(startBound, endBound, {
+                    syncKey: sKey,
+                    className: osraName,
+                    actualServiceDates: actualDates,
+                    todayStr
+                });
+                serviceDatesByClass.set(sKey, elapsed);
+                elapsed.forEach(d => allSummaryDatesSet.add(d));
+            }
+        }
+
+        const rows = activeKids.map((c, index) => {
+            const cid = String(c.id).trim();
             const records = attByChild[cid] || [];
+            const osraName = getOsraName(c);
+            const isThursdayClass = isThursdayServiceClass(c.syncKey, osraName);
+            const classServiceDates = serviceDatesByClass.get(c.syncKey) || [];
 
-            // Fridays attended for service
-            const attendedFridays = new Set();
-            let totalLiturgy = 0;
-            let totalTasbeha = 0;
+            // Count unique dates where child attended service, liturgy, or tasbeha in the selected period
+            const attendedServiceDates = new Set();
+            const attendedLiturgyDates = new Set();
+            const attendedTasbehaDates = new Set();
 
             records.forEach(r => {
-                if (r.status === 'present') {
-                    if (r.type === 'service' && fridaysSet.has(r.date)) {
-                        attendedFridays.add(r.date);
+                if (isAttendanceRecordPresent(r)) {
+                    if (r.type === 'service') {
+                        attendedServiceDates.add(r.date);
+                    } else if (r.type === 'liturgy') {
+                        attendedLiturgyDates.add(r.date);
+                    } else if (r.type === 'tasbeha') {
+                        attendedTasbehaDates.add(r.date);
                     }
-                    if (r.type === 'liturgy') totalLiturgy++;
-                    if (r.type === 'tasbeha') totalTasbeha++;
                 }
             });
 
-            const presentCount = attendedFridays.size;
-            const absentCount = Math.max(0, totalFridays - presentCount);
-            const attendancePercentage = totalFridays > 0
-                ? Math.round((presentCount / totalFridays) * 100)
+            const presentCount = attendedServiceDates.size;
+            const totalServiceDays = Math.max(classServiceDates.length, presentCount);
+            const absentCount = Math.max(0, totalServiceDays - presentCount);
+            const attendancePercentage = totalServiceDays > 0
+                ? Math.min(100, Math.round((presentCount / totalServiceDays) * 100))
                 : 0;
 
             const lastVisitDate = formatLastVisitedDate(c.last_visited);
@@ -177,17 +216,22 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
             return {
                 index: index + 1,
                 id: c.id,
+                syncKey: c.syncKey,
                 name: c.name || 'بدون اسم',
                 gender: c.gender,
                 isOrdained: c.isOrdained,
                 ordinationRank: c.ordinationRank,
-                osraName: getOsraName(c),
+                osraName,
+                isThursdayClass,
+                serviceDayLabel: isThursdayClass ? 'الخميس' : 'الجمعة',
                 phone: c.childPhone || c.fatherPhone || c.motherPhone || c.phone || '',
                 presentCount,
                 absentCount,
-                totalLiturgy,
-                totalTasbeha,
-                totalFridays,
+                totalLiturgy: attendedLiturgyDates.size,
+                totalTasbeha: attendedTasbehaDates.size,
+                totalFridays: totalServiceDays,
+                totalServiceDays,
+                classServiceDates,
                 attendancePercentage,
                 lastVisitDate,
                 lastVisitType: c.lastVisitationType || null,
@@ -195,7 +239,13 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                 lastVisitBadgeClass: lastVisitTypeInfo ? lastVisitTypeInfo.badgeClass : 'bg-slate-100 text-slate-600 border-slate-200'
             };
         });
-    }, [childrenData, attendanceRecords, elapsedFridays]);
+
+        return {
+            computedReport: rows,
+            summaryServiceDates: Array.from(allSummaryDatesSet).sort()
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeKids, canonicalData, attendanceRecords, periodBounds, todayStr, appSettings]);
 
     // Apply User Filters
     const filteredReport = useMemo(() => {
@@ -216,7 +266,16 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
     // 🌟 Summary Statistics
     const statsSummary = useMemo(() => {
         const totalKids = filteredReport.length;
-        if (totalKids === 0) return { totalKids: 0, avgRate: 0, totalPresents: 0, totalAbsents: 0 };
+        if (totalKids === 0) {
+            return {
+                totalKids: 0,
+                avgRate: 0,
+                totalPresents: 0,
+                totalAbsents: 0,
+                serviceDaysCount: summaryServiceDates.length,
+                activeServiceDates: summaryServiceDates
+            };
+        }
 
         const totalPresents = filteredReport.reduce((sum, item) => sum + item.presentCount, 0);
         const totalAbsents = filteredReport.reduce((sum, item) => sum + item.absentCount, 0);
@@ -224,8 +283,24 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
             filteredReport.reduce((sum, item) => sum + item.attendancePercentage, 0) / totalKids
         );
 
-        return { totalKids, avgRate, totalPresents, totalAbsents };
-    }, [filteredReport]);
+        const scopedDatesSet = new Set();
+        filteredReport.forEach(item => {
+            (item.classServiceDates || []).forEach(d => scopedDatesSet.add(d));
+        });
+        const scopedDates = scopedDatesSet.size > 0 ? Array.from(scopedDatesSet).sort() : summaryServiceDates;
+        const representativeDaysCount = selectedOsraFilter !== 'all' && filteredReport[0]
+            ? filteredReport[0].totalServiceDays
+            : scopedDates.length;
+
+        return {
+            totalKids,
+            avgRate,
+            totalPresents,
+            totalAbsents,
+            serviceDaysCount: representativeDaysCount,
+            activeServiceDates: scopedDates
+        };
+    }, [filteredReport, selectedOsraFilter, summaryServiceDates]);
 
     // 📥 Excel Export Handler (Requirement #3)
     const handleExportExcel = () => {
@@ -243,7 +318,8 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
             "كود المخدوم": item.id,
             "اسم المخدوم": item.name,
             "الفصل / الأسرة": item.osraName,
-            "إجمالي جُمع الفترة": item.totalFridays,
+            "يوم الخدمة": item.serviceDayLabel,
+            "إجمالي أيام الخدمة للفترة": item.totalServiceDays,
             "عدد أيام الحضور (الخدمة)": item.presentCount,
             "عدد أيام الغياب (الخدمة)": item.absentCount,
             "نسبة الحضور %": `${item.attendancePercentage}%`,
@@ -255,8 +331,8 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
 
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         worksheet['!cols'] = [
-            { wch: 5 }, { wch: 14 }, { wch: 25 }, { wch: 20 },
-            { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 14 },
+            { wch: 5 }, { wch: 14 }, { wch: 25 }, { wch: 20 }, { wch: 12 },
+            { wch: 18 }, { wch: 18 }, { wch: 18 }, { wch: 14 },
             { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 16 }
         ];
 
@@ -286,7 +362,7 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                             </h2>
                         </div>
                         <p className="text-xs font-bold text-slate-500 mt-1">
-                            حساب دقيق لنسب الحضور والغياب لجميع جُمع الفترة المنقضية ومتابعة الافتقاد
+                            حساب دقيق لنسب الحضور والغياب لجميع أيام الخدمة المنقضية (الخميس والجمعة) ومتابعة الافتقاد
                         </p>
                     </div>
 
@@ -421,7 +497,7 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                             onChange={(e) => setSelectedOsraFilter(e.target.value)}
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500"
                         >
-                            <option value="all">كل الفصول ({childrenData.length})</option>
+                            <option value="all">كل الفصول ({activeKids.length})</option>
                             {availableOsras.map(name => (
                                 <option key={name} value={name}>{name}</option>
                             ))}
@@ -461,8 +537,8 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                         <Calendar size={20} />
                     </div>
                     <div>
-                        <div className="text-[10px] font-black text-slate-400">جُمع الفترة المنقضية</div>
-                        <div className="text-lg font-black text-purple-700">{elapsedFridays.length} جمعة</div>
+                        <div className="text-[10px] font-black text-slate-400">أيام الخدمة المنقضية</div>
+                        <div className="text-lg font-black text-purple-700">{statsSummary.serviceDaysCount} يوم</div>
                     </div>
                 </div>
 
@@ -489,12 +565,14 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
 
             {/* 🌟 Report Data Table */}
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-black text-slate-700">
                         كشف الحضور والغياب والافتقاد ({filteredReport.length} مخدوم)
                     </span>
                     <span className="text-[11px] font-bold text-slate-500">
-                        {elapsedFridays.length > 0 ? `الجُمع المحسوبة: ${elapsedFridays.join(' ، ')}` : 'لم تنقضِ أي جُمع بعد في هذه الفترة'}
+                        {statsSummary.activeServiceDates.length > 0
+                            ? `أيام الخدمة المحسوبة: ${statsSummary.activeServiceDates.join(' ، ')}`
+                            : 'لم تنقضِ أي أيام خدمة بعد في هذه الفترة'}
                     </span>
                 </div>
 
@@ -539,11 +617,20 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                                             )}
                                         </td>
                                         <td className="p-3 text-slate-600 text-xs">
-                                            {child.osraName}
+                                            <div className="flex flex-col gap-0.5">
+                                                <span>{child.osraName}</span>
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded w-fit ${
+                                                    child.isThursdayClass
+                                                        ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                                        : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                                }`}>
+                                                    خدمة {child.serviceDayLabel}
+                                                </span>
+                                            </div>
                                         </td>
                                         <td className="p-3 text-center">
                                             <span className="inline-block px-2.5 py-1 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-black">
-                                                {child.presentCount} / {child.totalFridays}
+                                                {child.presentCount} / {child.totalServiceDays}
                                             </span>
                                         </td>
                                         <td className="p-3 text-center">

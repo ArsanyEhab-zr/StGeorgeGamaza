@@ -12,11 +12,13 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Network } from '@capacitor/network';
 import { calculateExactAge } from '../utils/dateUtils';
 import { TENANT_CONFIG } from '../config/tenantConfig';
-import { getCurrentServiceFridayDate, formatCopticDate } from '../utils/serviceWeek';
+import { getCurrentServiceFridayDate, formatCopticDate, isThursdayServiceClass } from '../utils/serviceWeek';
 import { useWeeklyClassActivity } from '../hooks/useWeeklyClassActivity';
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlerts';
 import UrgentInterventionModal from '../components/UrgentInterventionModal';
 import WeeklyClassActivitySummary from '../components/WeeklyClassActivitySummary';
+import ScopedNotificationCenter from '../components/ScopedNotificationCenter';
 
 export default function Home() {
     const navigate = useNavigate();
@@ -49,10 +51,17 @@ export default function Home() {
 
     const [activeWidget, setActiveWidget] = useState(localStorage.getItem('preferredWidget') || 'BIRTHDAYS');
 
-    // 🌟 Anchored to Friday-to-Friday service cycle (Requirement #8)
+    // 🌟 Anchored to Thursday-to-Wednesday service cycle
     const targetDate = useMemo(() => {
         return getCurrentServiceFridayDate();
     }, []);
+
+    // 🌟 Single Source of Truth (SSOT) for children, class counts, and validated weekly attendance
+    const {
+        activeChildren: children,
+        classCounts,
+        weeklyAttendance
+    } = useChurchDataEngine();
 
     // 🌟 Real-time weekly class activity badges (Requirement #2)
     const { activityByClass } = useWeeklyClassActivity();
@@ -60,18 +69,6 @@ export default function Home() {
     // 🌟 Urgent pastoral intervention alerts & PWA badges (Requirement #1)
     const { urgentCases, urgentCount, hasUrgentCases, permission, requestNotificationPermission } = useUrgentInterventionAlerts('all');
     const [showUrgentModal, setShowUrgentModal] = useState(false);
-
-    // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
-    const allowedClasses = currentServant?.allowedClasses || [];
-    const children = useLiveQuery(() => {
-        if (currentSyncKey === 'STAGE_ADMIN') {
-            if (allowedClasses.length === 0) return [];
-            return db.children.where('syncKey').anyOf(allowedClasses).filter(c => !c.isDeleted).toArray();
-        }
-        if (isMaster) return db.children.filter(c => !c.isDeleted).toArray();
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray();
-    }, [currentSyncKey, isMaster, JSON.stringify(allowedClasses)]);
 
     // 🌟 عدد الأحداث العامة الغير مقروءة
     const unseenGlobalEventsCount = useLiveQuery(() => {
@@ -240,12 +237,21 @@ export default function Home() {
 
     const getReportData = () => {
         let list = [];
-        if (modalState.type === 'absent') {
-            list = (children || []).filter(c => c.last_service !== targetDate && c.last_liturgy !== targetDate);
+        if (modalState.classSyncKey) {
+            const classAct = activityByClass[modalState.classSyncKey] || {};
+            if (modalState.type === 'service') {
+                list = classAct.whoAttendedServiceList || [];
+            } else if (modalState.type === 'absent') {
+                list = classAct.whoAbsentServiceList || [];
+            } else if (modalState.type === 'liturgy') {
+                list = classAct.whoAttendedLiturgyList || [];
+            }
+        } else if (modalState.type === 'absent') {
+            list = weeklyAttendance?.whoAbsentServiceList || [];
         } else if (modalState.type === 'service') {
-            list = (children || []).filter(c => c.last_service === targetDate);
+            list = weeklyAttendance?.whoAttendedServiceList || [];
         } else if (modalState.type === 'liturgy') {
-            list = (children || []).filter(c => c.last_liturgy === targetDate);
+            list = weeklyAttendance?.whoAttendedLiturgyList || [];
         }
 
         return {
@@ -392,8 +398,9 @@ export default function Home() {
                                 ) : null}
                             </div>
 
-                            {/* Left side (RTL): Profile & Settings circular buttons */}
+                            {/* Left side (RTL): Notifications, Profile & Settings circular buttons */}
                             <div className="flex items-center gap-2 shrink-0">
+                                <ScopedNotificationCenter variant="light" />
                                 <Link 
                                     to="/servant-profile" 
                                     aria-label="الملف الشخصي" 
@@ -520,7 +527,8 @@ export default function Home() {
                         {/* 📊 Compact Weekly Activity Summary Bar (Requirement #2) */}
                         <WeeklyClassActivitySummary 
                             classes={masterOsras} 
-                            activityByClass={activityByClass} 
+                            activityByClass={activityByClass}
+                            classCounts={classCounts}
                             onClassClick={(osra) => handleEnterOsra(osra)} 
                         />
 
@@ -530,35 +538,48 @@ export default function Home() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {masterOsras.length > 0 ? masterOsras.map((osra, i) => {
                                 const act = activityByClass[osra.syncKey] || {};
+                                const totalKids = act.totalActiveChildren ?? classCounts[osra.syncKey] ?? 0;
+                                const presentCount = Math.min(act.presentCount || 0, totalKids);
+                                const isThu = isThursdayServiceClass(osra.syncKey, osra.name);
                                 return (
                                     <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
-                                        <div className="flex items-center gap-4 mb-3">
-                                            {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
-                                                <img 
-                                                    src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
-                                                    alt={osra.name} 
-                                                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                                    className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm shrink-0" 
-                                                />
-                                            ) : (
-                                                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30 shrink-0">
-                                                    {osra.name ? osra.name.charAt(0) : "ف"}
+                                        <div className="flex items-center justify-between gap-3 mb-3">
+                                            <div className="flex items-center gap-4 min-w-0">
+                                                {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
+                                                    <img 
+                                                        src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
+                                                        alt={osra.name} 
+                                                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                        className="w-14 h-14 rounded-2xl object-cover bg-white p-1 shadow-sm shrink-0" 
+                                                    />
+                                                ) : (
+                                                    <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center text-xl font-black text-white p-1 shadow-sm border border-white/30 shrink-0">
+                                                        {osra.name ? osra.name.charAt(0) : "ف"}
+                                                    </div>
+                                                )}
+                                                <div className="min-w-0">
+                                                    <h3 className="text-white font-black text-lg truncate">{osra.name}</h3>
+                                                    <span className="text-[11px] font-bold text-indigo-200 block mt-0.5">
+                                                        👦👧 {totalKids} مخدوم • {isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}
+                                                    </span>
                                                 </div>
-                                            )}
-                                            <div className="min-w-0">
-                                                <h3 className="text-white font-black text-lg truncate">{osra.name}</h3>
                                             </div>
                                         </div>
 
                                         {/* 🌟 Requirement #2: In-App Class Card Activity Badges */}
                                         <div className="flex flex-wrap items-center gap-2 mb-4">
                                             {act.hasRecordedAttendance ? (
-                                                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1 shadow-xs">
-                                                    ✅ سجل الحضور ({act.presentCount})
-                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setModalState({ isOpen: true, type: 'service', classSyncKey: osra.syncKey, className: osra.name })}
+                                                    className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1 shadow-xs cursor-pointer transition-colors"
+                                                    title="اضغط لعرض قائمة مين حضر"
+                                                >
+                                                    ✅ سجل الحضور ({presentCount} / {totalKids})
+                                                </button>
                                             ) : (
                                                 <span className="bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1">
-                                                    ⏳ لم يسجل الحضور بعد
+                                                    ⏳ لم يسجل الحضور بعد (0 / {totalKids})
                                                 </span>
                                             )}
 
@@ -602,14 +623,14 @@ export default function Home() {
 
                             <div className="w-full pt-4 border-t border-slate-100 grid grid-cols-1 gap-2 mt-auto">
                                 <button onClick={() => setModalState({ isOpen: true, type: 'absent' })} className="bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-xl text-xs font-black shadow-md transition-all flex items-center justify-center gap-1.5 w-full">
-                                    <UserMinus size={14} /> مين غاب؟
+                                    <UserMinus size={14} /> مين غاب؟ ({weeklyAttendance?.whoAbsentServiceList?.length || 0})
                                 </button>
                                 <div className="flex gap-2 w-full">
                                     <button onClick={() => setModalState({ isOpen: true, type: 'service' })} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-xl text-[11px] font-black shadow-md transition-all flex items-center justify-center gap-1.5">
-                                        <UserCheck size={14} /> حضر الخدمة
+                                        <UserCheck size={14} /> حضر الخدمة ({weeklyAttendance?.presentCount || 0})
                                     </button>
                                     <button onClick={() => setModalState({ isOpen: true, type: 'liturgy' })} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl text-[11px] font-black shadow-md transition-all flex items-center justify-center gap-1.5">
-                                        <Church size={14} /> حضر القداس
+                                        <Church size={14} /> حضر القداس ({weeklyAttendance?.liturgyCount || 0})
                                     </button>
                                 </div>
                             </div>
@@ -817,9 +838,9 @@ export default function Home() {
                         <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                             <h2 className={`text-lg font-black flex items-center gap-2 
                                 ${modalState.type === 'absent' ? 'text-red-600' : modalState.type === 'champions' ? 'text-amber-500' : modalState.type === 'service' ? 'text-green-600' : 'text-blue-600'}`}>
-                                {modalState.type === 'absent' && <><UserMinus size={20} /> مين غاب؟</>}
-                                {modalState.type === 'service' && <><BookOpen size={20} /> حضروا الخدمة</>}
-                                {modalState.type === 'liturgy' && <><Church size={20} /> حضروا القداس</>}
+                                {modalState.type === 'absent' && <><UserMinus size={20} /> مين غاب؟ ({reportBoys.length + reportGirls.length})</>}
+                                {modalState.type === 'service' && <><BookOpen size={20} /> حضروا الخدمة {modalState.className ? `— ${modalState.className}` : ''} ({reportBoys.length + reportGirls.length})</>}
+                                {modalState.type === 'liturgy' && <><Church size={20} /> حضروا القداس ({reportBoys.length + reportGirls.length})</>}
                                 {modalState.type === 'champions' && <><Award size={20} className="text-amber-500 animate-bounce" /> مخدومين المواظبة</>}
                             </h2>
                             <button onClick={() => setModalState({ isOpen: false, type: null })} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"><X size={16} /></button>

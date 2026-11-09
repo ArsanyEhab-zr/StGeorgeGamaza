@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable no-unused-vars */
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
@@ -8,7 +8,13 @@ import { Search, Church, BookOpen, CheckCheck, X, MessageCircleWarning, History,
 import useAutoSync from '../hooks/useAutoSync';
 import BottomNav from '../components/BottomNav';
 import { logActivity } from '../utils/activityLogger';
-import { getCurrentServiceFridayDate, getLocalDateString } from '../utils/serviceWeek';
+import {
+    getDefaultServiceDateForClass,
+    isThursdayServiceClass,
+    resolveClassInfo,
+    getLocalDateString
+} from '../utils/serviceWeek';
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 
 export default function Attendance() {
     const { triggerAutoSync } = useAutoSync();
@@ -21,82 +27,166 @@ export default function Attendance() {
     const [modalState, setModalState] = useState({ isOpen: false, type: null });
 
     // Sync state with sessionStorage
-    React.useEffect(() => sessionStorage.setItem('attendance_filter', activeFilter), [activeFilter]);
-    React.useEffect(() => sessionStorage.setItem('attendance_search', searchQuery), [searchQuery]);
+    useEffect(() => sessionStorage.setItem('attendance_filter', activeFilter), [activeFilter]);
+    useEffect(() => sessionStorage.setItem('attendance_search', searchQuery), [searchQuery]);
 
-    // 🌟 Anchored to Friday-to-Friday service cycle (Requirement #8)
+    // 🔐 Resolve active class syncKey & className
+    const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '').trim();
+    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    const dashboardActiveClass = sessionStorage.getItem('dashboard_activeClassKey') || 'all';
+    const activeSyncKey = (isMaster && dashboardActiveClass && dashboardActiveClass !== 'all')
+        ? dashboardActiveClass
+        : currentSyncKey;
+
+    const classInfo = useMemo(() => resolveClassInfo(activeSyncKey), [activeSyncKey]);
+    const activeClassName = classInfo.className || localStorage.getItem('assignedOsra') || '';
+    const isThursdayClass = useMemo(
+        () => isThursdayServiceClass(activeSyncKey, activeClassName),
+        [activeSyncKey, activeClassName]
+    );
+
+    // 🌟 Smart default service date (Thursday for Thursday classes or on Thursdays, Friday for Friday classes)
     const targetDate = useMemo(() => {
-        return getCurrentServiceFridayDate();
-    }, []);
+        return getDefaultServiceDateForClass(activeSyncKey, activeClassName);
+    }, [activeSyncKey, activeClassName]);
 
+    const [hasManualDate, setHasManualDate] = useState(() => Boolean(passedDate));
     const [selectedDate, setSelectedDate] = useState(() => {
         if (passedDate) return passedDate;
-        const saved = sessionStorage.getItem('attendance_date');
-        if (saved) return saved;
-        return targetDate;
+        const savedManualKey = sessionStorage.getItem('attendance_manual_syncKey');
+        const savedManualDate = sessionStorage.getItem('attendance_manual_date');
+        if (savedManualKey === activeSyncKey && savedManualDate) {
+            return savedManualDate;
+        }
+        return getDefaultServiceDateForClass(activeSyncKey, activeClassName);
     });
-    
-    // Sync date selection with sessionStorage (ignoring initial passedDate resets after the fact)
-    React.useEffect(() => sessionStorage.setItem('attendance_date', selectedDate), [selectedDate]);
+
+    // If user switches classes and hasn't manually picked a custom date for the new class, update to that class's default service date
+    useEffect(() => {
+        if (passedDate) return;
+        const savedManualKey = sessionStorage.getItem('attendance_manual_syncKey');
+        if (!hasManualDate || savedManualKey !== activeSyncKey) {
+            const nextDefault = getDefaultServiceDateForClass(activeSyncKey, activeClassName);
+            setSelectedDate(nextDefault);
+            setHasManualDate(false);
+        }
+    }, [activeSyncKey, activeClassName, passedDate, hasManualDate]);
+
+    useEffect(() => {
+        sessionStorage.setItem('attendance_date', selectedDate);
+    }, [selectedDate]);
 
     const handleDateChange = (e) => {
         const val = e.target.value;
         if (!val) return;
+        setHasManualDate(true);
         setSelectedDate(val);
+        sessionStorage.setItem('attendance_manual_syncKey', activeSyncKey);
+        sessionStorage.setItem('attendance_manual_date', val);
     };
 
-    const handlePreviousFriday = () => {
-        const d = new Date(selectedDate);
+    const handlePreviousWeek = () => {
+        const d = new Date(`${selectedDate}T12:00:00`);
         if (!isNaN(d.getTime())) {
             d.setDate(d.getDate() - 7);
-            setSelectedDate(getLocalDateString(d));
+            const prevStr = getLocalDateString(d);
+            setHasManualDate(true);
+            setSelectedDate(prevStr);
+            sessionStorage.setItem('attendance_manual_syncKey', activeSyncKey);
+            sessionStorage.setItem('attendance_manual_date', prevStr);
         }
     };
 
-    // Dynamic attendance queries based on selectedDate
-    const attendanceRecords = useLiveQuery(() => db.attendance.where('date').equals(selectedDate).toArray(), [selectedDate]);
+    const handleResetToCurrentWeek = () => {
+        const defDate = getDefaultServiceDateForClass(activeSyncKey, activeClassName);
+        setHasManualDate(false);
+        setSelectedDate(defDate);
+        sessionStorage.removeItem('attendance_manual_syncKey');
+        sessionStorage.removeItem('attendance_manual_date');
+    };
+
+    // 🌟 Single Source of Truth Engine for children & selectedDate attendance
+    const {
+        activeChildren: canonicalChildren,
+        validatedAttendance
+    } = useChurchDataEngine(activeSyncKey, {
+        exactDate: selectedDate,
+        targetSyncKey: activeSyncKey
+    });
+
+    // Raw attendance records for selectedDate to display exact button states (present / absent / excused)
+    const attendanceRecords = useLiveQuery(
+        () => db.attendance.where('date').equals(selectedDate).toArray(),
+        [selectedDate]
+    );
+
+    const statusByChildAndType = useMemo(() => {
+        const map = new Map();
+        for (const r of (attendanceRecords || [])) {
+            if (!r || r.isDeleted === true || !r.childId || !r.type) continue;
+            const key = `${String(r.childId).trim()}::${r.type}`;
+            const existing = map.get(key);
+            if (!existing) {
+                map.set(key, r);
+            } else {
+                const t1 = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+                const t2 = r.updatedAt ? new Date(r.updatedAt).getTime() : 0;
+                if (t2 >= t1) map.set(key, r);
+            }
+        }
+        return map;
+    }, [attendanceRecords]);
 
     const getAttendanceStatus = (childId, type) => {
-        const record = attendanceRecords?.find(a => String(a.childId) === String(childId) && a.type === type && !a.isDeleted);
-        return record ? (record.status || 'present') : null;
+        const record = statusByChildAndType.get(`${String(childId).trim()}::${type}`);
+        if (!record) return null;
+        if (record.present === false || record.attended === false) return 'absent';
+        return record.status || 'present';
     };
 
-    // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
-    const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-    const children = useLiveQuery(() => {
-        if (isMaster) {
-            return db.children.filter(c => !c.isDeleted).toArray()
-                .then(arr => searchQuery
-                    ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                    : arr);
-        }
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray()
-            .then(arr => searchQuery
-                ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                : arr);
-    }, [searchQuery, currentSyncKey, isMaster]);
+    const children = useMemo(() => {
+        if (!canonicalChildren) return [];
+        if (!searchQuery.trim()) return canonicalChildren;
+        const q = searchQuery.toLowerCase();
+        return canonicalChildren.filter(c => c.name?.toLowerCase().includes(q));
+    }, [canonicalChildren, searchQuery]);
 
-    const filteredChildren = children?.filter((c) => {
-        if (activeFilter === "boys" && c.gender === "بنت") return false;
-        if (activeFilter === "girls" && c.gender !== "بنت") return false;
-        return true;
-    }) || [];
+    const filteredChildren = useMemo(() => {
+        return children.filter((c) => {
+            if (activeFilter === "boys" && c.gender === "بنت") return false;
+            if (activeFilter === "girls" && c.gender !== "بنت") return false;
+            return true;
+        });
+    }, [children, activeFilter]);
 
-    const liturgyCount = attendanceRecords?.filter(a => a.type === 'liturgy' && filteredChildren.some(c => String(c.id) === String(a.childId))).length || 0;
-    const serviceCount = attendanceRecords?.filter(a => a.type === 'service' && filteredChildren.some(c => String(c.id) === String(a.childId))).length || 0;
+    const filteredChildIdSet = useMemo(
+        () => new Set(filteredChildren.map(c => String(c.id).trim())),
+        [filteredChildren]
+    );
+
+    // Strictly validated present counts for the displayed children
+    const liturgyCount = useMemo(() => {
+        return validatedAttendance.whoAttendedLiturgyList.filter(c =>
+            filteredChildIdSet.has(String(c.id).trim())
+        ).length;
+    }, [validatedAttendance.whoAttendedLiturgyList, filteredChildIdSet]);
+
+    const serviceCount = useMemo(() => {
+        return validatedAttendance.whoAttendedServiceList.filter(c =>
+            filteredChildIdSet.has(String(c.id).trim())
+        ).length;
+    }, [validatedAttendance.whoAttendedServiceList, filteredChildIdSet]);
 
     const getReportData = () => {
         let list = [];
         if (modalState.type === 'absent') {
-            list = (children || []).filter(c => getAttendanceStatus(c.id, 'service') === 'absent');
+            list = (children || []).filter(c => !validatedAttendance.servicePresentIds.has(String(c.id).trim()));
         } else if (modalState.type === 'excused') {
             list = (children || []).filter(c => getAttendanceStatus(c.id, 'service') === 'excused');
         } else if (modalState.type === 'service') {
-            list = (children || []).filter(c => getAttendanceStatus(c.id, 'service') === 'present');
+            list = (children || []).filter(c => validatedAttendance.servicePresentIds.has(String(c.id).trim()));
         } else if (modalState.type === 'liturgy') {
-            list = (children || []).filter(c => getAttendanceStatus(c.id, 'liturgy') === 'present');
+            list = (children || []).filter(c => validatedAttendance.liturgyPresentIds.has(String(c.id).trim()));
         }
 
         return {
@@ -109,53 +199,108 @@ export default function Attendance() {
 
     const setAttendanceStatus = async (child, type, status) => {
         try {
-            const now = new Date().toISOString();
-            const currentSyncKey = localStorage.getItem('currentSyncKey');
+            const nowIso = new Date().toISOString();
+            const nowMs = Date.now();
+            const currentKey = String(localStorage.getItem('currentSyncKey') || '').trim();
+            const targetSyncKey = String(
+                child.syncKey ||
+                (activeSyncKey !== 'MASTER_ACCESS' && activeSyncKey !== 'ADMIN_MODE' && activeSyncKey !== 'STAGE_ADMIN' ? activeSyncKey : '') ||
+                currentKey
+            ).trim();
 
-            const records = await db.attendance.where('date').equals(selectedDate).toArray();
-            const activeRecords = records.filter(a => a.childId === child.id && !a.isDeleted);
-            const currentRecord = activeRecords.find(r => r.type === type);
-            
-            const updates = { isDirty: true, updatedAt: now };
+            const childIdStr = String(child.id).trim();
 
-            if (currentRecord) {
-                if (currentRecord.status === status) {
-                    // Clicking the same status removes it
-                    await db.attendance.update(currentRecord.id, { isDeleted: true, isDirty: true, updatedAt: now });
+            // Fetch all records for selectedDate to deduplicate and update cleanly
+            const recordsForDate = await db.attendance.where('date').equals(selectedDate).toArray();
+            const childRecordsForDate = recordsForDate.filter(a => String(a.childId).trim() === childIdStr);
+            const sameTypeRecords = childRecordsForDate.filter(a => a.type === type);
+
+            // Clean up any duplicate rows in db.attendance for the same (date, childId, type)
+            const activeSameType = sameTypeRecords.filter(r => !r.isDeleted);
+            const primaryRecord = activeSameType[0] || sameTypeRecords[0] || null;
+            const duplicateIds = sameTypeRecords
+                .filter(r => primaryRecord && r.id !== primaryRecord.id && r.id != null)
+                .map(r => r.id);
+
+            if (duplicateIds.length > 0) {
+                await db.attendance.bulkDelete(duplicateIds);
+            }
+
+            const otherActiveRecords = childRecordsForDate.filter(r => r.type !== type && !r.isDeleted && r.status === 'present');
+            const updates = { isDirty: true, updatedAt: nowIso };
+
+            if (primaryRecord && !primaryRecord.isDeleted) {
+                if (primaryRecord.status === status) {
+                    // Clicking the same active status toggles it off (soft-delete for cloud sync)
+                    await db.attendance.update(primaryRecord.id, {
+                        isDeleted: true,
+                        isDirty: true,
+                        syncKey: targetSyncKey,
+                        updatedAt: nowIso,
+                        updatedAtMs: nowMs
+                    });
                     if (status === 'present') {
                         const field = type === 'liturgy' ? 'last_liturgy' : 'last_service';
                         if (child[field] === selectedDate) updates[field] = null;
-                        if (activeRecords.length === 1) updates.streak = Math.max((child.streak || 0) - 1, 0);
+                        if (otherActiveRecords.length === 0) {
+                            updates.streak = Math.max((child.streak || 0) - 1, 0);
+                        }
                     }
                 } else {
-                    // Update existing record
-                    await db.attendance.update(currentRecord.id, { status, isDirty: true, updatedAt: now });
+                    // Update existing record to the new status
+                    await db.attendance.update(primaryRecord.id, {
+                        status,
+                        childId: child.id,
+                        syncKey: targetSyncKey,
+                        isDeleted: false,
+                        isDirty: true,
+                        updatedAt: nowIso,
+                        updatedAtMs: nowMs
+                    });
                     if (status === 'present') {
                         const field = type === 'liturgy' ? 'last_liturgy' : 'last_service';
                         if (!child[field] || selectedDate >= child[field]) updates[field] = selectedDate;
                     }
                 }
-            } else {
-                // Add new record
-                const targetSyncKey = child.syncKey || currentSyncKey;
-                await db.attendance.add({ 
-                    date: selectedDate, 
-                    childId: child.id, 
-                    type: type, 
-                    status: status,
-                    syncKey: targetSyncKey, 
-                    isDirty: true, 
-                    updatedAt: now, 
-                    isDeleted: false 
+            } else if (primaryRecord && primaryRecord.isDeleted) {
+                // Revive previously soft-deleted record for the same (date, childId, type) to avoid duplicate rows
+                await db.attendance.update(primaryRecord.id, {
+                    date: selectedDate,
+                    childId: child.id,
+                    type,
+                    status,
+                    syncKey: targetSyncKey,
+                    isDeleted: false,
+                    isDirty: true,
+                    updatedAt: nowIso,
+                    updatedAtMs: nowMs
                 });
-                
                 if (status === 'present') {
                     const field = type === 'liturgy' ? 'last_liturgy' : 'last_service';
                     if (!child[field] || selectedDate >= child[field]) updates[field] = selectedDate;
-                    if (activeRecords.length === 0) updates.streak = (child.streak || 0) + 1;
+                    if (otherActiveRecords.length === 0) updates.streak = (child.streak || 0) + 1;
+                }
+            } else {
+                // Insert a single clean attendance record
+                await db.attendance.add({
+                    date: selectedDate,
+                    childId: child.id,
+                    type,
+                    status,
+                    syncKey: targetSyncKey,
+                    isDirty: true,
+                    updatedAt: nowIso,
+                    updatedAtMs: nowMs,
+                    isDeleted: false
+                });
+
+                if (status === 'present') {
+                    const field = type === 'liturgy' ? 'last_liturgy' : 'last_service';
+                    if (!child[field] || selectedDate >= child[field]) updates[field] = selectedDate;
+                    if (otherActiveRecords.length === 0) updates.streak = (child.streak || 0) + 1;
                 }
             }
-            
+
             await db.children.update(child.id, updates);
             triggerAutoSync();
 
@@ -182,7 +327,7 @@ export default function Attendance() {
         return child.childPhone || child.fatherPhone || child.motherPhone || child.phone;
     };
 
-    const generateMissedFridayMsg = (child) => {
+    const generateMissedServiceMsg = (child) => {
         const title = child.gender === 'بنت' ? 'مخدومتنا' : 'مخدومنا';
         const namePart = child.name ? child.name.split(' ')[0] : 'يا مخدوم';
         let msg = `وحشتنا يا ${title} (${namePart})! 🥺💔\nمجتش ليه يوم ${selectedDate}؟ مكانك كان فاضي، مستنيينك في الكنيسة!`;
@@ -195,14 +340,14 @@ export default function Attendance() {
 
     const getArabicDateText = (dateString) => {
         try {
-            const d = new Date(dateString);
+            const d = new Date(`${dateString}T12:00:00`);
             const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
             const dayName = days[d.getDay()];
             const dd = String(d.getDate()).padStart(2, '0');
             const mm = String(d.getMonth() + 1).padStart(2, '0');
             const yyyy = d.getFullYear();
             return `${dayName}، ${dd}/${mm}/${yyyy}`;
-        } catch(e) {
+        } catch (e) {
             return dateString;
         }
     };
@@ -212,26 +357,60 @@ export default function Attendance() {
             <header className="bg-white/80 backdrop-blur-md p-4 shadow-sm mb-6 rounded-b-4xl">
                 <div className="max-w-4xl mx-auto">
                     {/* Date Warning Banner */}
-                    <div className="mb-4 bg-amber-100 border-l-4 border-r-4 border-amber-500 text-amber-900 p-4 rounded-xl shadow-md font-black text-sm flex items-center justify-center text-center">
-                        ⚠️ يتم الآن تسجيل الحضور لتاريخ: {getArabicDateText(selectedDate)}
+                    <div className="mb-4 bg-amber-100 border-l-4 border-r-4 border-amber-500 text-amber-900 p-3.5 rounded-xl shadow-md font-black text-xs sm:text-sm flex flex-col sm:flex-row items-center justify-between gap-2 text-center">
+                        <span>
+                            ⚠️ يتم الآن تسجيل الحضور لتاريخ: {getArabicDateText(selectedDate)}
+                        </span>
+                        <span className="text-[11px] bg-amber-200/80 text-amber-950 px-2.5 py-1 rounded-lg font-black">
+                            {isThursdayClass ? '🗓️ خدمة يوم الخميس' : '🗓️ خدمة يوم الجمعة'}
+                        </span>
                     </div>
 
                     {/* Date Picker UI Wrapper */}
-                    <div className="flex items-center gap-2 mb-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <Calendar className="text-blue-500 w-5 h-5 mr-2" />
-                        <input type="date" value={selectedDate} onChange={handleDateChange} className="flex-1 bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-xl outline-none border border-slate-200 focus:border-blue-400 focus:bg-white transition-all text-sm" />
-                        <button onClick={handlePreviousFriday} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black hover:bg-blue-100 transition-all shrink-0 border border-blue-100">
+                    <div className="flex flex-wrap items-center gap-2 mb-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+                        <Calendar className="text-blue-500 w-5 h-5 mr-2 shrink-0" />
+                        <input
+                            type="date"
+                            value={selectedDate}
+                            onChange={handleDateChange}
+                            className="flex-1 min-w-[140px] bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-xl outline-none border border-slate-200 focus:border-blue-400 focus:bg-white transition-all text-sm"
+                        />
+                        {selectedDate !== targetDate && (
+                            <button
+                                onClick={handleResetToCurrentWeek}
+                                className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-xl text-xs font-black hover:bg-emerald-100 transition-all shrink-0 border border-emerald-200"
+                            >
+                                أسبوع الخدمة الحالي
+                            </button>
+                        )}
+                        <button
+                            onClick={handlePreviousWeek}
+                            className="bg-blue-50 text-blue-600 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-blue-100 transition-all shrink-0 border border-blue-100"
+                        >
                             الأسبوع الماضي
                         </button>
                     </div>
 
                     <div className="relative mb-4">
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <input type="text" placeholder="ابحث عن مخدوم..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pr-10 pl-4 py-2.5 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                        <input
+                            type="text"
+                            placeholder="ابحث عن مخدوم..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pr-10 pl-4 py-2.5 rounded-full bg-slate-100 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                        />
                     </div>
                     <div className="flex gap-2 justify-center">
-                        {[{ id: "all", label: "الكل 🌟" }, { id: "boys", label: "ولاد 👦" }, { id: "girls", label: "بنات 👧" }].map(f => (
-                            <button key={f.id} onClick={() => setActiveFilter(f.id)} aria-label={`تصفية حسب ${f.label}`} className={`flex-1 px-4 py-2 rounded-full text-xs font-black transition-all ${activeFilter === f.id ? "bg-blue-600 text-white shadow-md" : "bg-slate-100 text-slate-600"}`}>{f.label}</button>
+                        {[{ id: "all", label: `الكل 🌟 (${children.length})` }, { id: "boys", label: "ولاد 👦" }, { id: "girls", label: "بنات 👧" }].map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setActiveFilter(f.id)}
+                                aria-label={`تصفية حسب ${f.label}`}
+                                className={`flex-1 px-4 py-2 rounded-full text-xs font-black transition-all ${activeFilter === f.id ? "bg-blue-600 text-white shadow-md" : "bg-slate-100 text-slate-600"}`}
+                            >
+                                {f.label}
+                            </button>
                         ))}
                     </div>
                 </div>
@@ -240,24 +419,35 @@ export default function Attendance() {
             <main className="px-4 max-w-4xl mx-auto">
                 <div className="bg-white border border-slate-200 p-4 rounded-3xl mb-6 shadow-sm flex flex-col gap-4">
                     <div className="flex justify-between items-center px-1">
-                        <h3 className="text-sm font-black text-slate-800 flex items-center gap-2"><History size={16} className="text-indigo-500" /> تقارير يوم ({selectedDate})</h3>
+                        <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                            <History size={16} className="text-indigo-500" /> تقارير يوم ({selectedDate})
+                        </h3>
+                        <span className="text-xs font-black text-slate-500">
+                            إجمالي المخدومين النشطين: {filteredChildren.length}
+                        </span>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full">
                         <button onClick={() => setModalState({ isOpen: true, type: 'absent' })} className="bg-red-700 text-red-50 border border-red-800 py-2.5 rounded-xl text-[11px] font-black hover:bg-red-800 active:scale-95 transition-all flex items-center justify-center gap-1.5">
-                            <UserMinus size={16} /> المتبقين / غياب
+                            <UserMinus size={16} /> المتبقين / غياب ({Math.max(0, filteredChildren.length - serviceCount)})
                         </button>
                         <button onClick={() => setModalState({ isOpen: true, type: 'service' })} className="bg-green-700 text-green-50 border border-green-800 py-2.5 rounded-xl text-[11px] font-black hover:bg-green-800 active:scale-95 transition-all flex items-center justify-center gap-1.5">
-                            <UserCheck size={16} /> حضور الخدمة
+                            <UserCheck size={16} /> حضور الخدمة ({serviceCount})
                         </button>
                         <button onClick={() => setModalState({ isOpen: true, type: 'liturgy' })} className="bg-yellow-600 text-yellow-50 border border-yellow-700 py-2.5 rounded-xl text-[11px] font-black hover:bg-yellow-700 active:scale-95 transition-all flex items-center justify-center gap-1.5">
-                            <Church size={16} /> حضور القداس
+                            <Church size={16} /> حضور القداس ({liturgyCount})
                         </button>
                     </div>
                 </div>
 
                 <div className="flex gap-3 mb-6">
-                    <div className="flex-1 bg-blue-50 p-3 rounded-2xl border border-blue-100 flex justify-between items-center"><span className="text-blue-700 font-black text-sm flex gap-1"><Church size={18} /> قداس</span><span className="bg-blue-500 text-white px-2 py-0.5 rounded-md text-xs">{liturgyCount}</span></div>
-                    <div className="flex-1 bg-green-50 p-3 rounded-2xl border border-green-100 flex justify-between items-center"><span className="text-green-700 font-black text-sm flex gap-1"><BookOpen size={18} /> خدمة</span><span className="bg-green-500 text-white px-2 py-0.5 rounded-md text-xs">{serviceCount}</span></div>
+                    <div className="flex-1 bg-blue-50 p-3 rounded-2xl border border-blue-100 flex justify-between items-center">
+                        <span className="text-blue-700 font-black text-sm flex gap-1"><Church size={18} /> قداس</span>
+                        <span className="bg-blue-500 text-white px-2.5 py-0.5 rounded-md text-xs font-black">{liturgyCount} / {filteredChildren.length}</span>
+                    </div>
+                    <div className="flex-1 bg-green-50 p-3 rounded-2xl border border-green-100 flex justify-between items-center">
+                        <span className="text-green-700 font-black text-sm flex gap-1"><BookOpen size={18} /> خدمة</span>
+                        <span className="bg-green-500 text-white px-2.5 py-0.5 rounded-md text-xs font-black">{serviceCount} / {filteredChildren.length}</span>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -266,11 +456,11 @@ export default function Attendance() {
                             <div className="flex items-center gap-3">
                                 <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-xl overflow-hidden ring-2 ring-slate-50">
                                     {child.profilePic ? (
-                                        <img 
-                                            src={child.profilePic} 
-                                            alt={child.name} 
-                                            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-                                            className="object-cover w-full h-full" 
+                                        <img
+                                            src={child.profilePic}
+                                            alt={child.name}
+                                            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                            className="object-cover w-full h-full"
                                         />
                                     ) : (child.gender === 'بنت' ? '👧' : '👦')}
                                 </div>
@@ -301,9 +491,9 @@ export default function Attendance() {
                         <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                             <h2 className={`text-lg font-black flex items-center gap-2 
                                 ${modalState.type === 'absent' ? 'text-red-600' : modalState.type === 'service' ? 'text-green-600' : 'text-yellow-600'}`}>
-                                {modalState.type === 'absent' && <><UserMinus size={20} /> تقرير غياب</>}
-                                {modalState.type === 'service' && <><BookOpen size={20} /> تقرير حضور الخدمة</>}
-                                {modalState.type === 'liturgy' && <><Church size={20} /> تقرير حضور القداس</>}
+                                {modalState.type === 'absent' && <><UserMinus size={20} /> تقرير غياب ({reportBoys.length + reportGirls.length})</>}
+                                {modalState.type === 'service' && <><BookOpen size={20} /> تقرير حضور الخدمة ({reportBoys.length + reportGirls.length})</>}
+                                {modalState.type === 'liturgy' && <><Church size={20} /> تقرير حضور القداس ({reportBoys.length + reportGirls.length})</>}
                             </h2>
                             <button onClick={() => setModalState({ isOpen: false, type: null })} aria-label="إغلاق" className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"><X size={16} /></button>
                         </div>
@@ -320,10 +510,10 @@ export default function Attendance() {
                                                 <span className="font-black text-xs text-slate-700">{child.name || 'بدون اسم'}</span>
                                                 {modalState.type === 'absent' && (
                                                     <div className="flex gap-1">
-                                                        <a href={generateMissedFridayMsg(child).whatsapp} aria-label={`واتساب لـ ${child.name}`} target="_blank" rel="noreferrer" className="bg-green-700 text-green-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-green-800">
+                                                        <a href={generateMissedServiceMsg(child).whatsapp} aria-label={`واتساب لـ ${child.name}`} target="_blank" rel="noreferrer" className="bg-green-700 text-green-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-green-800">
                                                             <MessageCircleWarning size={12} /> واتساب
                                                         </a>
-                                                        <a href={generateMissedFridayMsg(child).sms} aria-label={`رسالة لـ ${child.name}`} className="bg-blue-600 text-blue-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-700">
+                                                        <a href={generateMissedServiceMsg(child).sms} aria-label={`رسالة لـ ${child.name}`} className="bg-blue-600 text-blue-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-700">
                                                             رسالة
                                                         </a>
                                                     </div>
@@ -345,10 +535,10 @@ export default function Attendance() {
                                                 <span className="font-black text-xs text-slate-700">{child.name || 'بدون اسم'}</span>
                                                 {modalState.type === 'absent' && (
                                                     <div className="flex gap-1">
-                                                        <a href={generateMissedFridayMsg(child).whatsapp} aria-label={`واتساب لـ ${child.name}`} target="_blank" rel="noreferrer" className="bg-green-700 text-green-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-green-800">
+                                                        <a href={generateMissedServiceMsg(child).whatsapp} aria-label={`واتساب لـ ${child.name}`} target="_blank" rel="noreferrer" className="bg-green-700 text-green-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-green-800">
                                                             <MessageCircleWarning size={12} /> واتساب
                                                         </a>
-                                                        <a href={generateMissedFridayMsg(child).sms} aria-label={`رسالة لـ ${child.name}`} className="bg-blue-600 text-blue-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-700">
+                                                        <a href={generateMissedServiceMsg(child).sms} aria-label={`رسالة لـ ${child.name}`} className="bg-blue-600 text-blue-50 px-2 py-1.5 rounded-lg text-[10px] font-black flex items-center gap-1 hover:bg-blue-700">
                                                             رسالة
                                                         </a>
                                                     </div>

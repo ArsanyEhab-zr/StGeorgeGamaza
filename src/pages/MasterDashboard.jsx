@@ -14,11 +14,14 @@ import { TENANT_CONFIG } from '../config/tenantConfig';
 import { logActivity } from '../utils/activityLogger';
 import ServantProfile from '../components/ServantProfile';
 import EditServantModal from '../components/EditServantModal';
-import { getCurrentServiceFridayDate } from '../utils/serviceWeek';
+import { getCurrentServiceFridayDate, isThursdayServiceClass } from '../utils/serviceWeek';
 import { useWeeklyClassActivity } from '../hooks/useWeeklyClassActivity';
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import { cleanupDuplicateAndOrphanedAttendance } from '../utils/churchDataEngine';
 import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlerts';
 import WeeklyClassActivitySummary from '../components/WeeklyClassActivitySummary';
 import UrgentInterventionModal from '../components/UrgentInterventionModal';
+import ScopedNotificationCenter from '../components/ScopedNotificationCenter';
 
 export default function MasterDashboard() {
     const navigate = useNavigate();
@@ -46,24 +49,11 @@ export default function MasterDashboard() {
     const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin;
 
     // States
-    const children = useLiveQuery(async () => {
-        if (!hasAccess) return [];
-        let kids = [];
-        if (isSuperAdmin || isPriest) {
-            kids = await db.children.toArray();
-        } else if (isStageAdmin) {
-            const allowedSyncKeys = currentServant.allowedClasses || [];
-            kids = await db.children.filter(c => allowedSyncKeys.includes(c.syncKey)).toArray();
-        } else if (currentSyncKey) {
-            kids = await db.children.where('syncKey').equals(currentSyncKey).toArray();
-        }
-        
-        // Unify: Exclude soft-deleted kids globally
-        return kids.filter(c => !c.isDeleted);
-    }, [hasAccess, isSuperAdmin, isPriest, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
     const [selectedOsraKey, setSelectedOsraKey] = useState(sessionStorage.getItem('master_osraKey') || null);
     const [searchTerm, setSearchTerm] = useState(sessionStorage.getItem('master_search') || '');
     const [genderFilter, setGenderFilter] = useState(sessionStorage.getItem('master_gender') || 'ALL');
+    const [showWhoAttendedList, setShowWhoAttendedList] = useState(false);
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
 
     // 🌟 المتغير الجديد للتبديل بين الأطفال والخدام 🌟
     const [viewMode, setViewMode] = useState(sessionStorage.getItem('master_viewMode') || 'KIDS'); // 'KIDS' | 'SERVANTS'
@@ -91,6 +81,37 @@ export default function MasterDashboard() {
         }
         return [];
     }, [appSettings, isSuperAdmin, isPriest, isAmin, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
+
+    // 🌟 Single Source of Truth (SSOT) Engine for children, class counts, and validated weekly attendance
+    const allowedSyncKeyList = useMemo(
+        () => allowedOsras.map(o => o.syncKey).filter(Boolean),
+        [allowedOsras]
+    );
+    const {
+        allScopedChildren: children,
+        classCounts,
+        validatedAttendance: selectedClassAttendance,
+        weekRange
+    } = useChurchDataEngine(allowedSyncKeyList, {
+        targetSyncKey: selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? selectedOsraKey : null
+    });
+
+    const handleCleanupAttendance = async () => {
+        try {
+            setIsCleaningUp(true);
+            const res = await cleanupDuplicateAndOrphanedAttendance({ removeCloudOrphans: true });
+            triggerAutoSync();
+            alert(
+                `✅ تم تنظيف وتصحيح سجلات الحضور بنجاح!\n` +
+                `• سجلات مكررة أو يتيمة تم حذفها: ${res.deletedCount}\n` +
+                `• سجلات تم تصحيح ربط الفصل لها: ${res.fixedCount}`
+            );
+        } catch (err) {
+            alert('حدث خطأ أثناء تنظيف السجلات: ' + err.message);
+        } finally {
+            setIsCleaningUp(false);
+        }
+    };
 
     // 🌟🌟 Auto-Pull: سحب الهيكل المركزي تلقائياً عند فتح الصفحة 🌟🌟
     useEffect(() => {
@@ -499,6 +520,7 @@ export default function MasterDashboard() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                            <ScopedNotificationCenter variant="amber" />
                             {(isSuperAdmin || isPriest) && (
                                 <button 
                                     onClick={() => navigate('/master-logs')}
@@ -744,16 +766,31 @@ export default function MasterDashboard() {
                             <div className="col-span-1 sm:col-span-2">
                                 <WeeklyClassActivitySummary 
                                     classes={allowedOsras} 
-                                    activityByClass={activityByClass} 
+                                    activityByClass={activityByClass}
+                                    classCounts={classCounts}
                                     onClassClick={(osra) => setSelectedOsraKey(osra.syncKey)} 
                                 />
                             </div>
 
+                            {/* 🧹 زر تنظيف وتصحيح سجلات الحضور المكررة واليتيمة */}
+                            <div className="col-span-1 sm:col-span-2">
+                                <button
+                                    type="button"
+                                    onClick={handleCleanupAttendance}
+                                    disabled={isCleaningUp}
+                                    className="w-full bg-white hover:bg-indigo-50 text-indigo-800 border border-indigo-200 p-3.5 rounded-2xl text-xs font-black shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                                >
+                                    <span>{isCleaningUp ? '⏳ جاري تنظيف وتصحيح السجلات...' : '🧹 تنظيف وتصحيح سجلات الحضور المكررة'}</span>
+                                </button>
+                            </div>
+
                             {/* 📂 كروت الأسر المنفصلة */}
                             {allowedOsras.map((osra) => {
-                                const countKids = children?.filter(c => c.syncKey === osra.syncKey).length || 0;
+                                const countKids = classCounts[osra.syncKey] ?? (children?.filter(c => c.syncKey === osra.syncKey).length || 0);
                                 const countServants = appSettings.servants?.filter(s => s.syncKey === osra.syncKey).length || 0;
                                 const act = activityByClass[osra.syncKey] || {};
+                                const presentCount = Math.min(act.presentCount || 0, countKids);
+                                const isThu = isThursdayServiceClass(osra.syncKey, osra.name);
                                 return (
                                     <div
                                         key={osra.syncKey}
@@ -772,17 +809,18 @@ export default function MasterDashboard() {
                                             <p className="text-[10px] font-bold text-slate-500 mt-1 flex flex-wrap gap-2">
                                                 <span>أمين الأسرة: {osra.amin || 'غير محدد'}</span>
                                                 <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">👨‍🏫 {countServants} خدام</span>
+                                                <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}</span>
                                             </p>
 
                                             {/* 🌟 Requirement #2: In-App Class Card Activity Badges */}
                                             <div className="flex flex-wrap items-center gap-1.5 mt-2">
                                                 {act.hasRecordedAttendance ? (
                                                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-2xs">
-                                                        ✅ سجل الحضور ({act.presentCount})
+                                                        ✅ سجل الحضور ({presentCount} / {countKids})
                                                     </span>
                                                 ) : (
                                                     <span className="bg-slate-50 text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1">
-                                                        ⏳ لم يسجل بعد
+                                                        ⏳ لم يسجل بعد (0 / {countKids})
                                                     </span>
                                                 )}
 
@@ -827,15 +865,57 @@ export default function MasterDashboard() {
                             </button>
                         </div>
 
-                        {/* 🌟 زراير التبديل بين الأطفال والخدام 🌟 */}
-                        <div className="flex gap-2 bg-slate-200/50 p-1.5 rounded-2xl mb-4">
+                        {/* 🌟 زراير التبديل بين الأطفال والخدام + قائمة مين حضر هذا الأسبوع 🌟 */}
+                        <div className="flex flex-wrap gap-2 bg-slate-200/50 p-1.5 rounded-2xl mb-4">
                             <button onClick={() => setViewMode('KIDS')} className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${viewMode === 'KIDS' ? 'bg-white text-indigo-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}>
                                 👦👧 المخدومين ({osraChildren.length})
+                            </button>
+                            <button
+                                onClick={() => setShowWhoAttendedList(prev => !prev)}
+                                className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${showWhoAttendedList ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}`}
+                            >
+                                ✅ مين حضر هذا الأسبوع ({selectedClassAttendance?.presentCount || 0} / {selectedClassAttendance?.totalActiveChildren || 0})
                             </button>
                             <button onClick={() => setViewMode('SERVANTS')} className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${viewMode === 'SERVANTS' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30' : 'text-slate-500 hover:bg-slate-200'}`}>
                                 👨‍🏫 الخدام ({osraServants.length})
                             </button>
                         </div>
+
+                        {showWhoAttendedList && (
+                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-3xl p-4 mb-4 animate-in fade-in duration-200">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h3 className="text-xs sm:text-sm font-black text-emerald-900">
+                                            ✅ قائمة المخدومين الحاضرين في الخدمة هذا الأسبوع ({selectedClassAttendance?.whoAttendedServiceList?.length || 0} من {selectedClassAttendance?.totalActiveChildren || 0})
+                                        </h3>
+                                        <p className="text-[10px] font-bold text-emerald-700 mt-0.5">
+                                            دورة الأسبوع: الخميس {weekRange.startDate} إلى الأربعاء {weekRange.endDate}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowWhoAttendedList(false)}
+                                        className="text-xs font-black text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100"
+                                    >
+                                        إغلاق ✕
+                                    </button>
+                                </div>
+                                {(!selectedClassAttendance?.whoAttendedServiceList || selectedClassAttendance.whoAttendedServiceList.length === 0) ? (
+                                    <p className="text-xs font-bold text-emerald-700/80 text-center py-4">
+                                        لم يتم تسجيل حضور خدمة لأي مخدوم نشط في هذا الفصل خلال أسبوع الخدمة الحالي.
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                                        {selectedClassAttendance.whoAttendedServiceList.map((c, idx) => (
+                                            <div key={c.id} className="bg-white border border-emerald-200/80 rounded-xl px-3 py-2 flex items-center justify-between text-xs font-bold text-slate-800 shadow-2xs">
+                                                <span className="truncate">{idx + 1}. {c.name}</span>
+                                                <span className="text-[10px] text-emerald-700 shrink-0">{c.gender === 'بنت' ? '👧' : '👦'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="relative">
                             <Search className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />

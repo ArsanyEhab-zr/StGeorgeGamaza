@@ -24,7 +24,22 @@ import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
 import { deleteChildRecord } from '../db/sync';
-import { getCurrentServiceFridayDate, getServiceWeekRange, isWithinCurrentServiceWeek } from '../utils/serviceWeek';
+import {
+    getCurrentServiceFridayDate,
+    getServiceWeekRange,
+    isWithinCurrentServiceWeek,
+    isThursdayServiceClass,
+    getElapsedServiceDatesForClass,
+    getLocalDateString
+} from '../utils/serviceWeek';
+import {
+    getCanonicalActiveChildren,
+    getValidatedClassAttendance,
+    isAttendanceRecordPresent,
+    cleanupDuplicateAndOrphanedAttendance
+} from '../utils/churchDataEngine';
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import ScopedNotificationCenter from '../components/ScopedNotificationCenter';
 
 const getSettings = () => {
     const defaults = {
@@ -67,41 +82,29 @@ export default function Dashboard() {
         return list;
     }, [appSettings.services, currentSyncKey, JSON.stringify(allowedClasses)]);
 
-    const children = useLiveQuery(async () => {
-        let kids = [];
+    // 🌟 Single Source of Truth (SSOT) Engine for children & attendance
+    const engineScope = useMemo(() => {
         if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
             if (activeClassKey && activeClassKey !== 'MASTER_ACCESS' && activeClassKey !== 'ADMIN_MODE' && activeClassKey !== 'all') {
-                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
-            } else {
-                kids = await db.children.toArray();
+                return activeClassKey;
             }
-        } else if (currentSyncKey === 'STAGE_ADMIN') {
+            return allAvailableOsras.map(o => o.syncKey);
+        }
+        if (currentSyncKey === 'STAGE_ADMIN') {
             if (activeClassKey && activeClassKey !== 'all' && allowedClasses.includes(activeClassKey)) {
-                kids = await db.children.where('syncKey').equals(activeClassKey).toArray();
-            } else {
-                if (allowedClasses.length === 0) return [];
-                kids = await db.children.where('syncKey').anyOf(allowedClasses).toArray();
+                return activeClassKey;
             }
-        } else if (currentSyncKey) {
-            kids = await db.children.where('syncKey').equals(currentSyncKey).toArray();
+            return allowedClasses;
         }
-        
-        // 🌟 1. Filter out soft-deleted globally
-        kids = kids.filter(c => !c.isDeleted);
-        
-        // 🌟 2. For Master Admins showing all classes, filter out orphaned kids (syncKey not in active Osras) to match MasterDashboard count exactly
-        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
-            if (!activeClassKey || activeClassKey === 'all') {
-                const saved = localStorage.getItem('appSettings');
-                const settings = saved ? JSON.parse(saved) : {};
-                const allValidSyncKeys = (settings.services || []).flatMap(s => s.osras || []).map(o => o.syncKey);
-                kids = kids.filter(c => allValidSyncKeys.includes(c.syncKey));
-            }
-        }
-        
-        return kids;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSyncKey, JSON.stringify(allowedClasses), activeClassKey]);
+        return currentSyncKey;
+    }, [currentSyncKey, activeClassKey, allAvailableOsras, allowedClasses]);
+
+    const {
+        isLoading: isEngineLoading,
+        activeChildren: children
+    } = useChurchDataEngine(engineScope, {
+        targetSyncKey: isMaster ? activeClassKey : currentSyncKey
+    });
 
     const { triggerAutoSync } = useAutoSync();
 
@@ -157,7 +160,7 @@ export default function Dashboard() {
     }, []);
     // 🌟🌟🌟 نهاية كود الطرد 🌟🌟🌟
 
-    if (!children) return (
+    if (isEngineLoading) return (
         <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-bold text-slate-400 gap-3">
             <Loader2 className="animate-spin text-indigo-500 w-10 h-10" /> جاري تحميل غرفة الإدارة...
         </div>
@@ -218,6 +221,10 @@ export default function Dashboard() {
                                 </p>
                             </div>
                         </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                        <ScopedNotificationCenter variant="dark" />
                     </div>
                 </div>
             </header>
@@ -379,77 +386,129 @@ export default function Dashboard() {
 function StatsView({ childrenData, appSettings }) {
     const { triggerAutoSync } = useAutoSync();
     const [statsTab, setStatsTab] = useState('overview'); // 'overview' | 'attendance_report'
-    const total = childrenData.length;
-    const boys = childrenData.filter(c => c.gender !== 'بنت').length;
-    const girls = childrenData.filter(c => c.gender === 'بنت').length;
-    const today = new Date().toISOString().split('T')[0];
+    const [showWhoAttended, setShowWhoAttended] = useState(false);
+    const [isCleaningUp, setIsCleaningUp] = useState(false);
+
+    const canonicalData = useMemo(() => getCanonicalActiveChildren(childrenData), [childrenData]);
+    const activeChildren = canonicalData.activeChildren;
+
+    const total = activeChildren.length;
+    const boys = activeChildren.filter(c => c.gender !== 'بنت').length;
+    const girls = activeChildren.filter(c => c.gender === 'بنت').length;
+    const today = getLocalDateString();
 
     const currentYear = new Date().getFullYear();
-    const currentMonthPrefix = `${currentYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-    
-    // 🌟 جلب داتا الغياب لشهر الحالي عشان نرسم بيها الإحصائيات (أسرع في الأداء السحابي والمحلي)
-    const attendanceData = useLiveQuery(() => 
+    const currentMonth = new Date().getMonth() + 1;
+    const currentMonthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+    // 🌟 جلب داتا الغياب للسنة الحالية
+    const attendanceData = useLiveQuery(() =>
         db.attendance.filter(a => a.date && a.date.startsWith(currentYear.toString())).toArray()
     ) || [];
 
-    // 🌟 Anchored Friday-to-Friday service cycle counters (Requirement #8)
-    const currentServiceFriday = getCurrentServiceFridayDate();
+    // 🌟 Anchored Thursday-to-Wednesday service cycle counters (SSOT)
     const serviceWeek = getServiceWeekRange();
 
     const weeklyStats = useMemo(() => {
-        const fridayAtt = attendanceData.filter(a => a.date === currentServiceFriday && !a.isDeleted);
-        const serviceCount = fridayAtt.filter(a => a.type === 'service' && a.status === 'present').length;
-        const liturgyCount = fridayAtt.filter(a => a.type === 'liturgy' && a.status === 'present').length;
-        const tasbehaCount = fridayAtt.filter(a => a.type === 'tasbeha' && a.status === 'present').length;
-
-        // Weekly visitations within Friday-to-Thursday range
-        const weekVisitations = attendanceData.filter(a => 
-            a.type === 'visitation' && 
-            !a.isDeleted && 
-            a.date >= serviceWeek.startDate && 
-            a.date <= serviceWeek.endDate
-        ).length;
+        const validatedWeek = getValidatedClassAttendance(attendanceData, canonicalData, {
+            startDate: serviceWeek.startDate,
+            endDate: serviceWeek.endDate
+        });
 
         return {
-            serviceCount,
-            liturgyCount,
-            tasbehaCount,
-            weekVisitations,
-            fridayDate: currentServiceFriday,
+            serviceCount: validatedWeek.presentCount,
+            liturgyCount: validatedWeek.liturgyCount,
+            tasbehaCount: validatedWeek.tasbehaCount,
+            weekVisitations: validatedWeek.visitationCount,
+            whoAttendedServiceList: validatedWeek.whoAttendedServiceList,
+            whoAttendedLiturgyList: validatedWeek.whoAttendedLiturgyList,
+            whoAbsentServiceList: validatedWeek.whoAbsentServiceList,
+            weekStartDate: serviceWeek.startDate,
             weekEndDate: serviceWeek.endDate
         };
-    }, [attendanceData, currentServiceFriday, serviceWeek.startDate, serviceWeek.endDate]);
+    }, [attendanceData, canonicalData, serviceWeek.startDate, serviceWeek.endDate]);
 
-    // ─── 📊 1. حساب إحصائيات الحضور لجُمع الشهر الحالي ───
-    const getFridaysOfCurrentMonth = () => {
-        const d = new Date();
-        const year = d.getFullYear();
-        const month = d.getMonth();
-        const fridays = [];
-        const date = new Date(year, month, 1);
-        while (date.getMonth() === month) {
-            if (date.getDay() === 5) {
-                // تظبيط الـ Timezone عشان التاريخ يفضل صح
-                const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-                fridays.push(localDate);
-            }
-            date.setDate(date.getDate() + 1);
+    // ─── 📊 1. حساب إحصائيات الحضور لأيام الخدمة في الشهر الحالي (الخميس والجمعة) ───
+    const attendanceStats = useMemo(() => {
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        const mPad = String(month).padStart(2, '0');
+        const startBound = `${year}-${mPad}-01`;
+        const lastDay = new Date(year, month, 0).getDate();
+        const endBound = `${year}-${mPad}-${String(lastDay).padStart(2, '0')}`;
+
+        // Detect if scoped children belong to Thursday classes, Friday classes, or both
+        let hasThursdayClass = false;
+        let hasFridayClass = false;
+        const distinctSyncKeys = new Set(activeChildren.map(c => c.syncKey));
+        for (const sKey of distinctSyncKeys) {
+            if (isThursdayServiceClass(sKey)) hasThursdayClass = true;
+            else hasFridayClass = true;
         }
-        return fridays;
+        if (!hasThursdayClass && !hasFridayClass) {
+            const currentKey = localStorage.getItem('currentSyncKey') || '';
+            if (isThursdayServiceClass(currentKey)) hasThursdayClass = true;
+            else hasFridayClass = true;
+        }
+
+        // Actual service dates recorded in this month for scoped children
+        const actualDatesSet = new Set();
+        attendanceData.forEach(a => {
+            if (!a || a.isDeleted || !a.date || !a.date.startsWith(currentMonthPrefix)) return;
+            if (a.type === 'service' && isAttendanceRecordPresent(a) && canonicalData.childMapById.has(String(a.childId).trim())) {
+                actualDatesSet.add(a.date);
+            }
+        });
+
+        const monthDatesSet = new Set(actualDatesSet);
+        const cur = new Date(`${startBound}T12:00:00`);
+        const end = new Date(`${endBound}T12:00:00`);
+        while (cur <= end) {
+            const day = cur.getDay();
+            const dStr = getLocalDateString(cur);
+            if (dStr <= today) {
+                if ((hasThursdayClass && day === 4) || (hasFridayClass && day === 5)) {
+                    monthDatesSet.add(dStr);
+                }
+            }
+            cur.setDate(cur.getDate() + 1);
+        }
+
+        const sortedDates = Array.from(monthDatesSet).sort();
+        const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+
+        return sortedDates.map((dStr, index) => {
+            const validatedDay = getValidatedClassAttendance(attendanceData, canonicalData, {
+                exactDate: dStr
+            });
+            const dObj = new Date(`${dStr}T12:00:00`);
+            const dayName = !isNaN(dObj.getTime()) ? dayNames[dObj.getDay()] : 'خدمة';
+            return {
+                date: dStr,
+                label: `${dayName} ${index + 1}`,
+                service: validatedDay.presentCount,
+                liturgy: validatedDay.liturgyCount
+            };
+        });
+    }, [attendanceData, canonicalData, activeChildren, currentMonthPrefix, today]);
+
+    // ─── 🧹 تنظيف وتصحيح سجلات الحضور المكررة واليتيمة ───
+    const handleCleanupDuplicateAttendance = async () => {
+        try {
+            setIsCleaningUp(true);
+            const res = await cleanupDuplicateAndOrphanedAttendance({ removeCloudOrphans: true });
+            triggerAutoSync();
+            alert(
+                `✅ تم تنظيف وتصحيح سجلات الحضور بنجاح!\n` +
+                `• سجلات مكررة أو يتيمة تم حذفها: ${res.deletedCount}\n` +
+                `• سجلات تم تصحيح ربط الفصل لها: ${res.fixedCount}`
+            );
+        } catch (err) {
+            alert('حدث خطأ أثناء تنظيف السجلات: ' + err.message);
+        } finally {
+            setIsCleaningUp(false);
+        }
     };
-
-    const monthFridays = getFridaysOfCurrentMonth();
-
-    const attendanceStats = monthFridays.map((friday, index) => {
-        const serviceCount = attendanceData.filter(a => a.date === friday && a.type === 'service').length;
-        const liturgyCount = attendanceData.filter(a => a.date === friday && a.type === 'liturgy').length;
-        return {
-            date: friday,
-            label: `الجمعة ${index + 1}`,
-            service: serviceCount,
-            liturgy: liturgyCount
-        };
-    });
 
     // ─── 🏡 2. تجميع إحصائيات الافتقاد بالتواريخ والأنواع (Requirement #6) ───
     const visitationsByDate = childrenData.reduce((acc, child) => {
@@ -495,10 +554,10 @@ function StatsView({ childrenData, appSettings }) {
             // حساب العمر
             const calculatedAge = calculateExactAge(c.birthDate);
 
-            // حساب الحضور
-            const childAtt = attendanceData.filter(a => a.childId === c.id);
-            const totalService = childAtt.filter(a => a.type === 'service').length;
-            const totalLiturgy = childAtt.filter(a => a.type === 'liturgy').length;
+            // حساب الحضور الفعلي الموثق بدون تكرار أو غياب
+            const childAtt = attendanceData.filter(a => String(a.childId).trim() === String(c.id).trim() && isAttendanceRecordPresent(a));
+            const totalService = new Set(childAtt.filter(a => a.type === 'service').map(a => a.date)).size;
+            const totalLiturgy = new Set(childAtt.filter(a => a.type === 'liturgy').map(a => a.date)).size;
 
             return {
                 "م": c.id,
@@ -653,28 +712,47 @@ function StatsView({ childrenData, appSettings }) {
                         </div>
                     </div>
 
-                    {/* 🌟 ملخص أرقام أسبوع الخدمة الحالي (من الجمعة للخميس) (Requirement #8) */}
+                    {/* 🌟 ملخص أرقام أسبوع الخدمة الحالي (من الخميس للأربعاء) */}
                     <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white p-5 rounded-3xl shadow-md border border-indigo-800">
-                        <div className="flex items-center justify-between border-b border-indigo-800/80 pb-3 mb-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-800/80 pb-3 mb-4">
                             <div className="flex items-center gap-2">
                                 <Calendar className="text-amber-400 w-5 h-5" />
                                 <div>
-                                    <h3 className="text-xs sm:text-sm font-black">نشاط أسبوع الخدمة الحالي</h3>
-                                    <p className="text-[10px] text-indigo-200 font-bold">دورة الأسبوع: الجمعة {weeklyStats.fridayDate} حتى الخميس {weeklyStats.weekEndDate}</p>
+                                    <h3 className="text-xs sm:text-sm font-black">نشاط أسبوع الخدمة الحالي (SSOT)</h3>
+                                    <p className="text-[10px] text-indigo-200 font-bold">دورة الأسبوع: الخميس {weeklyStats.weekStartDate} حتى الأربعاء {weeklyStats.weekEndDate}</p>
                                 </div>
                             </div>
-                            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
-                                مستمر طوال الأسبوع
-                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowWhoAttended(prev => !prev)}
+                                    className="text-[11px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full font-black cursor-pointer transition-colors"
+                                >
+                                    👥 مين حضر الخدمة؟ ({weeklyStats.serviceCount} / {total})
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCleanupDuplicateAttendance}
+                                    disabled={isCleaningUp}
+                                    className="text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full font-black cursor-pointer transition-colors"
+                                    title="تنظيف وتصحيح سجلات الحضور المكررة أو اليتيمة"
+                                >
+                                    {isCleaningUp ? '⏳ جاري التنظيف...' : '🧹 تنظيف وتصحيح سجلات الحضور المكررة'}
+                                </button>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                            <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
-                                <div className="text-emerald-400 font-black text-2xl">{weeklyStats.serviceCount}</div>
+                            <div
+                                onClick={() => setShowWhoAttended(prev => !prev)}
+                                className="bg-white/10 hover:bg-white/15 cursor-pointer backdrop-blur-sm p-3 rounded-2xl border border-white/10 transition-colors"
+                                title="اضغط لعرض قائمة مين حضر الخدمة هذا الأسبوع"
+                            >
+                                <div className="text-emerald-400 font-black text-2xl">{weeklyStats.serviceCount} <span className="text-xs text-indigo-200">/ {total}</span></div>
                                 <div className="text-[11px] font-bold text-slate-200 mt-0.5">حاضرين الخدمة</div>
                             </div>
                             <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
-                                <div className="text-amber-400 font-black text-2xl">{weeklyStats.liturgyCount}</div>
+                                <div className="text-amber-400 font-black text-2xl">{weeklyStats.liturgyCount} <span className="text-xs text-indigo-200">/ {total}</span></div>
                                 <div className="text-[11px] font-bold text-slate-200 mt-0.5">حضور القداس</div>
                             </div>
                             <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10">
@@ -686,6 +764,38 @@ function StatsView({ childrenData, appSettings }) {
                                 <div className="text-[11px] font-bold text-slate-200 mt-0.5">الافتقاد الأسبوعي</div>
                             </div>
                         </div>
+
+                        {/* 🌟 قائمة مين حضر الخدمة هذا الأسبوع (Who Attended Service List) */}
+                        {showWhoAttended && (
+                            <div className="mt-4 pt-4 border-t border-indigo-800/80 animate-in fade-in duration-200">
+                                <div className="flex items-center justify-between mb-2">
+                                    <h4 className="text-xs font-black text-emerald-300">
+                                        ✅ قائمة الحاضرين في الخدمة هذا الأسبوع ({weeklyStats.whoAttendedServiceList.length} مخدوم):
+                                    </h4>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowWhoAttended(false)}
+                                        className="text-[10px] text-indigo-300 hover:text-white font-bold"
+                                    >
+                                        إغلاق ✕
+                                    </button>
+                                </div>
+                                {weeklyStats.whoAttendedServiceList.length === 0 ? (
+                                    <p className="text-xs font-bold text-indigo-200/80 py-2 text-center">
+                                        لم يتم تسجيل حضور خدمة لأي مخدوم نشط في هذا الأسبوع بعد.
+                                    </p>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                                        {weeklyStats.whoAttendedServiceList.map((child, idx) => (
+                                            <div key={child.id} className="bg-white/10 border border-white/15 rounded-xl px-3 py-2 flex items-center justify-between text-xs font-bold">
+                                                <span className="truncate">{idx + 1}. {child.name}</span>
+                                                <span className="text-[10px] text-emerald-300 shrink-0">{child.gender === 'بنت' ? '👧' : '👦'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
             {/* 📈 2. مؤشر حضور الشهر (رسم بياني) */}
@@ -790,6 +900,14 @@ function StatsView({ childrenData, appSettings }) {
                     <p className="text-[10px] font-bold text-red-600/80 mb-4">احذر: استخدام هذه الأزرار سيؤدي لمسح البيانات من جهازك.</p>
 
                     <div className="flex flex-col gap-2">
+                        <button
+                            onClick={handleCleanupDuplicateAttendance}
+                            disabled={isCleaningUp}
+                            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-black text-xs hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+                        >
+                            🧹 تنظيف وتصحيح سجلات الحضور المكررة
+                        </button>
+
                         <button onClick={handleGlobalReset} className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs hover:bg-amber-600 transition-all flex items-center justify-center gap-2 shadow-sm">
                             <RefreshCw size={16} /> تصفير العدادات للفصل (لبداية شهر جديد)
                         </button>
