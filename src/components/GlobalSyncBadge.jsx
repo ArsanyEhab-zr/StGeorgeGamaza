@@ -5,6 +5,7 @@ import useSyncStatus from '../hooks/useSyncStatus';
 export default function GlobalSyncBadge() {
     const { isOnline } = useNetworkStatus();
     const { dirtyCount } = useSyncStatus();
+    const [visible, setVisible] = useState(false);
     const [syncState, setSyncState] = useState({
         status: 'idle', // 'idle' | 'syncing' | 'success' | 'error'
         lastSyncedAt: null,
@@ -12,19 +13,27 @@ export default function GlobalSyncBadge() {
 
     useEffect(() => {
         let hideTimer = null;
+        let safetyTimer = null;
         const handleSyncEvent = (e) => {
             const detail = e.detail || {};
+            setVisible(true);
+            clearTimeout(safetyTimer);
+            if (detail.status === 'syncing') safetyTimer = setTimeout(() => {
+                setSyncState(prev => ({ ...prev, status: 'error' }));
+                hideTimer = setTimeout(() => setVisible(false), 2000);
+            }, 8000);
             setSyncState(prev => ({
                 ...prev,
-                status: detail.status || 'idle',
+                status: detail.status === 'idle' && detail.outcome === 'error' ? 'error' : (detail.status || 'idle'),
                 lastSyncedAt: detail.time || prev.lastSyncedAt,
             }));
 
             if (hideTimer) clearTimeout(hideTimer);
-            if (detail.status === 'success' || detail.status === 'error') {
+            if (detail.status === 'idle' || detail.status === 'success' || detail.status === 'error') {
                 hideTimer = setTimeout(() => {
                     setSyncState(prev => ({ ...prev, status: 'idle' }));
-                }, 3000);
+                    setVisible(false);
+                }, 2000);
             }
         };
 
@@ -38,6 +47,7 @@ export default function GlobalSyncBadge() {
 
         return () => {
             if (hideTimer) clearTimeout(hideTimer);
+            clearTimeout(safetyTimer);
             window.removeEventListener('global-sync-status', handleSyncEvent);
             window.removeEventListener('trigger-manual-sync', handleManualTrigger);
         };
@@ -63,6 +73,8 @@ export default function GlobalSyncBadge() {
             </div>
         );
     }
+
+    if (!visible) return null;
 
     // 2. Actively syncing
     if (syncState.status === 'syncing') {
@@ -98,8 +110,8 @@ export default function GlobalSyncBadge() {
         );
     }
 
-    // 4. Sync just completed (auto-hides after 3s)
-    if (syncState.status === 'success') {
+    // 4. Sync just completed (auto-hides after 2s)
+    if (syncState.status === 'success' || (syncState.status === 'idle' && dirtyCount === 0)) {
         return (
             <div
                 className={`${basePositionClass} bg-white/95 border border-emerald-300 shadow-[0_4px_20px_rgba(16,185,129,0.2)]`}

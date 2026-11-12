@@ -1,3 +1,4 @@
+import { createSyncDeadline } from './syncDeadline';
 import { groupChildren, preferredChild, childAliases, childNameKey, resolveAttendanceChild, attendanceIdentity, timestamp } from './childIdentity';
 import { db } from '../db/database';
 
@@ -316,11 +317,18 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
  * 🧹 Cleans up duplicate (date, childId, type) rows and orphaned attendance rows in Dexie
  * (and optionally removes orphaned cloud docs in Firestore when requested).
  */
-export const consolidateLocalDexieDuplicates = async () => db.transaction('rw', db.children, db.attendance, async () => {
+export const consolidateLocalDexieDuplicates = options => {
+    const ownsDeadline = typeof options?.run !== 'function';
+    const deadline = ownsDeadline ? createSyncDeadline('تنظيف السجلات') : options;
+    return deadline.run(() => db.transaction('rw', db.children, db.attendance, async tx => {
+    const unsubscribe = deadline?.onCancel?.(() => tx?.abort?.());
+    try {
+    deadline?.check?.();
     const children = await db.children.toArray();
     const canonical = getCanonicalActiveChildren(children);
     let deletedCount = 0, fixedCount = 0;
     for (const group of groupChildren(children)) {
+        deadline?.check?.();
         if (group.length < 2) continue;
         const winner = preferredChild(group);
         // Keep the local primary key stable; cloudId remains the transport identifier.
@@ -328,7 +336,10 @@ export const consolidateLocalDexieDuplicates = async () => db.transaction('rw', 
         for (const child of group) if (child.id !== winner.id) { await db.children.delete(child.id); deletedCount++; }
     }
     const seen = new Map();
-    for (const row of await db.attendance.toArray()) {
+    const originalRows = await db.attendance.toArray();
+    const originalById = new Map(originalRows.map(row => [row.id, row]));
+    for (const row of originalRows) {
+        deadline?.check?.();
         const child = resolveAttendanceChild(row, canonical);
         if (!child) continue; // An incomplete class download is never proof of an orphan.
         const updated = { ...row, ...attendanceIdentity(child) };
@@ -339,7 +350,14 @@ export const consolidateLocalDexieDuplicates = async () => db.transaction('rw', 
             seen.set(key, updated);
         } else { await db.attendance.delete(row.id); deletedCount++; }
     }
-    for (const row of seen.values()) { await db.attendance.put(row); fixedCount++; }
+    for (const row of seen.values()) {
+        deadline?.check?.();
+        if (JSON.stringify(row) !== JSON.stringify(originalById.get(row.id))) {
+            await db.attendance.put(row); fixedCount++;
+        }
+    }
     return { deletedCount, fixedCount, totalCleaned: deletedCount + fixedCount };
-});
+    } finally { unsubscribe?.(); }
+    })).finally(() => { if (ownsDeadline) deadline.cancel(); });
+};
 export const cleanupDuplicateAndOrphanedAttendance = consolidateLocalDexieDuplicates;

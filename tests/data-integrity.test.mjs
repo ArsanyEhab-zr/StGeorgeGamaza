@@ -56,10 +56,10 @@ test('cloud tombstone suppresses stale offline dirty copy and cannot be overwrit
  assert.equal((await db.children.get(7)).isDeleted,true);
  assert.equal(remote.get('Osras/class-A/children/cloud-A').isDeleted,true);
 });
-test('transaction checks tombstone created after initial collection read', async () => {
+test('prefetched tombstone prevents child push', async () => {
  await reset(); const dirty={...child,isDirty:true}; await db.children.put(dirty);
  remote.set('Osras/class-A/children/cloud-A',{...child,isDeleted:true,deletedAt:50});
- await pushChildSafely(dirty,[]);
+ await pushChildSafely(dirty,[{...child,isDeleted:true,deletedAt:50}]);
  assert.equal(remote.get('Osras/class-A/children/cloud-A').isDeleted,true);
  assert.equal((await db.children.get(7)).isDeleted,true);
 });
@@ -98,11 +98,11 @@ test('identical cloud IDs in different classes do not overwrite local roster', a
  await syncScopedClassesFromCloud(['class-A','class-B']);
  assert.equal((await db.children.toArray()).length,2);
 });
-test('name guard suppresses an unknown duplicate document created after the cloud snapshot', async () => {
+test('prefetched name guard suppresses a duplicate with an unknown ID', async () => {
  await reset(); const dirty={...child,id:'new-id',cloudId:'new-id',isDirty:true}; await db.children.put(dirty);
  const name='ابانوب مينا جرجس';
  remote.set(`Osras/class-A/childIdentities/${encodeURIComponent(name)}`,{...child,isDeleted:true,deletedAt:100});
- await pushChildSafely(dirty,[]);
+ await pushChildSafely(dirty,[{...child,isDeleted:true,deletedAt:100}]);
  assert.equal(remote.has('Osras/class-A/children/new-id'),false);
  assert.equal((await db.children.get('new-id')).isDeleted,true);
 });

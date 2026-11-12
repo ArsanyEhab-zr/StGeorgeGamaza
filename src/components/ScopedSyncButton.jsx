@@ -2,7 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { restoreChildEverywhere } from '../db/sync';
 import { groupChildren, preferredChild } from '../utils/childIdentity';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { scopedSyncKeys, syncScopedClassesFromCloud } from '../db/childSync';
 import { getServiceWeekRange } from '../utils/serviceWeek';
 
@@ -11,23 +11,46 @@ export default function ScopedSyncButton({ variant = 'card', secondaryAction = n
     const [message, setMessage] = useState('');
     const scope = JSON.stringify(scopedSyncKeys().sort());
     const deletedChildren = useLiveQuery(async () => groupChildren((await db.children.toArray()).filter(c => JSON.parse(scope).includes(c.syncKey))).map(preferredChild).filter(c => c.isDeleted), [scope]) || [];
-    const restore = async child => {
+    const operation = useRef(0);
+    const safetyTimer = useRef(null);
+    const runInteractive = useCallback(async action => {
+        const id = ++operation.current;
+        clearTimeout(safetyTimer.current);
         setBusy(true);
+        safetyTimer.current = setTimeout(() => {
+            if (operation.current === id) setBusy(false);
+        }, 6000);
         try {
-            const result = await restoreChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
-            setMessage(result.pendingSync ? 'تمت الاستعادة محليًا؛ في انتظار المزامنة' : 'تمت استعادة المخدوم');
-        } catch (error) { setMessage(error.message); }
-        finally { setBusy(false); }
-    };
-    const refresh = useCallback(async () => {
-        setBusy(true);
-        try {
-            const result = await syncScopedClassesFromCloud(JSON.parse(scope));
-            setMessage(`تمت مزامنة ${result.classCount} فصل وتحديث الأعداد`);
-        } catch (error) { setMessage(`المزامنة غير مكتملة: ${error.message}`); }
-        finally { setBusy(false); }
+            const text = await action();
+            if (operation.current === id) setMessage(text);
+        } catch (error) {
+            if (operation.current === id) setMessage(`المزامنة غير مكتملة: ${error.message}`);
+        } finally {
+            if (operation.current === id) {
+                clearTimeout(safetyTimer.current);
+                setBusy(false);
+            }
+        }
+    }, []);
+    const restore = child => runInteractive(async () => {
+        const result = await restoreChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
+        return result.pendingSync ? 'تمت الاستعادة محليًا؛ في انتظار المزامنة' : 'تمت استعادة المخدوم';
+    });
+    const refresh = () => runInteractive(async () => {
+        const result = await syncScopedClassesFromCloud(JSON.parse(scope));
+        return `تمت مزامنة ${result.classCount} فصل وتحديث الأعداد (${result.durationMs} مللي ثانية)`;
+    });
+    useEffect(() => {
+        let cancelled = false;
+        const timer = setTimeout(() => {
+            // Background mount sync never owns or disables the interactive button.
+            syncScopedClassesFromCloud(JSON.parse(scope)).catch(error => {
+                if (!cancelled) setMessage(`المزامنة الخلفية غير مكتملة: ${error.message}`);
+            });
+        }, 0);
+        return () => { cancelled = true; clearTimeout(timer); };
     }, [scope]);
-    useEffect(() => { const timer = setTimeout(refresh, 0); return () => clearTimeout(timer); }, [refresh]); // Scope changes deliberately retrigger the full reconciliation.
+    useEffect(() => () => { operation.current++; clearTimeout(safetyTimer.current); }, []);
     const week = getServiceWeekRange();
 
     if (variant === 'header-amber') {
@@ -39,12 +62,12 @@ export default function ScopedSyncButton({ variant = 'card', secondaryAction = n
                 </p>
 
                 {/* Row 3: Responsive Action Buttons */}
-                <div className={`grid gap-2 w-full ${secondaryAction ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                <div className="flex flex-wrap items-center gap-2 w-full">
                     <button
                         type="button"
                         disabled={busy}
                         onClick={refresh}
-                        className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2.5 text-xs sm:text-sm font-black text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
+                        className="max-w-full flex-none rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2.5 text-xs sm:text-sm font-black text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
                     >
                         {busy ? '⏳ جارٍ مزامنة الفصول…' : '🔄 مزامنة وتوحيد أرقام الفصول'}
                     </button>
@@ -53,7 +76,7 @@ export default function ScopedSyncButton({ variant = 'card', secondaryAction = n
                             type="button"
                             disabled={secondaryAction.disabled}
                             onClick={secondaryAction.onClick}
-                            className="w-full rounded-xl bg-white/95 hover:bg-white px-3.5 py-2.5 text-xs sm:text-sm font-black text-indigo-800 shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
+                            className="max-w-full flex-none rounded-xl bg-red-600 hover:bg-red-700 px-3.5 py-2.5 text-xs sm:text-sm font-black text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
                         >
                             {secondaryAction.label}
                         </button>
@@ -89,7 +112,7 @@ export default function ScopedSyncButton({ variant = 'card', secondaryAction = n
                 type="button"
                 disabled={busy}
                 onClick={refresh}
-                className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2.5 text-xs sm:text-sm font-black text-white shadow-xs transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
+                className="max-w-full flex-none rounded-xl bg-indigo-600 hover:bg-indigo-700 px-3.5 py-2.5 text-xs sm:text-sm font-black text-white shadow-xs transition-all active:scale-[0.99] disabled:opacity-60 whitespace-normal leading-snug text-center cursor-pointer"
             >
                 {busy ? '⏳ جارٍ مزامنة كل الفصول…' : '🔄 مزامنة شاملة وتوحيد أرقام الفصول الآن'}
             </button>

@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:data-integrity": "node --import ./tests/register.mjs tests/data-integrity.test.mjs"
+    "test:data-integrity": "node --import ./tests/register.mjs tests/data-integrity.test.mjs",
+    "test:sync-freeze": "node --import ./tests/register.mjs tests/sync-freeze.test.mjs",
+    "test:sync-ui": "node tests/sync-ui.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",

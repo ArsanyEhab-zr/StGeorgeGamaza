@@ -1,3 +1,4 @@
+import { createSyncDeadline } from '../utils/syncDeadline';
 import { scopedSyncKeys } from '../db/childSync';
 import { resolveServantNotificationScope } from '../utils/notificationScopeEngine';
 import { childAliases, attendanceIdentity } from '../utils/childIdentity';
@@ -90,9 +91,10 @@ export default function MasterDashboard() {
     });
 
     const handleCleanupAttendance = async () => {
+        const deadline = createSyncDeadline('تنظيف الحضور');
         try {
             setIsCleaningUp(true);
-            const res = await cleanupDuplicateAndOrphanedAttendance({ removeCloudOrphans: true });
+            const res = await deadline.run(() => cleanupDuplicateAndOrphanedAttendance(deadline));
             triggerAutoSync();
             alert(
                 `✅ تم تنظيف وتصحيح سجلات الحضور بنجاح!\n` +
@@ -102,17 +104,19 @@ export default function MasterDashboard() {
         } catch (err) {
             alert('حدث خطأ أثناء تنظيف السجلات: ' + err.message);
         } finally {
+            deadline.cancel();
             setIsCleaningUp(false);
         }
     };
 
     // 🌟🌟 Auto-Pull: سحب الهيكل المركزي تلقائياً عند فتح الصفحة 🌟🌟
     useEffect(() => {
+        const deadline = createSyncDeadline('تحميل الهيكل');
         const autoFetchStructure = async () => {
             if (!navigator.onLine || !hasAccess) return;
             try {
                 const settingsRef = doc(firestore, 'System', 'mainConfig');
-                const snap = await getDoc(settingsRef);
+                const snap = await deadline.run(() => getDoc(settingsRef));
                 if (snap.exists()) {
                     const cloudConfig = snap.data();
                     const localSettingsString = localStorage.getItem('appSettings');
@@ -145,6 +149,7 @@ export default function MasterDashboard() {
         window.addEventListener('storage', handleProfileUpdate);
 
         return () => {
+            deadline.cancel();
             window.removeEventListener('servant-profile-updated', handleProfileUpdate);
             window.removeEventListener('storage', handleProfileUpdate);
         };
@@ -496,13 +501,10 @@ export default function MasterDashboard() {
                     {/* Row 1: Top Navigation & Icons Bar */}
                     <div className="flex items-center justify-between gap-2 w-full">
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
-                                <ArrowRight size={20} />
-                            </button>
                             <div className="min-w-0">
-                                <h1 className="text-lg sm:text-2xl font-extrabold flex items-center gap-1.5 truncate">
+                                <h1 className="text-base sm:text-2xl font-extrabold flex items-center gap-1.5 min-w-0">
                                     <Crown size={18} className="shrink-0 text-amber-200" />
-                                    <span className="truncate">لوحة الإدارة الشاملة</span>
+                                    <span className="whitespace-normal break-words">لوحة الإدارة الشاملة</span>
                                 </h1>
                                 <p className="text-[11px] sm:text-xs font-bold text-amber-100 truncate">
                                     {selectedOsraKey && activeOsra ? `عرض بيانات: ${activeOsra.name}` : ((isSuperAdmin || isPriest) ? 'مراقبة جميع الأسر الكنسية' : 'مراقبة خدمتك الخاصة')}
@@ -522,45 +524,25 @@ export default function MasterDashboard() {
                                     <span className="hidden sm:inline">سجل النشاط</span>
                                 </button>
                             )}
+                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
+                                <ArrowRight size={20} />
+                            </button>
                         </div>
                     </div>
 
                     {/* Row 2 & Row 3: Service Week Banner + Responsive Sync/Cleanup Actions */}
                     <ScopedSyncButton
                         variant="header-amber"
-                        secondaryAction={!selectedOsraKey ? {
-                            onClick: handleCleanupAttendance,
-                            disabled: isCleaningUp,
-                            label: isCleaningUp ? '⏳ جاري تنظيف السجلات...' : '🧹 تنظيف السجلات المكررة'
+                        secondaryAction={hasUrgentCases ? {
+                            onClick: () => setShowUrgentModal(true),
+                            label: `🚨 حالات التدخل العاجل (${urgentCount})`
                         } : null}
                     />
 
-                    {/* Urgent Intervention Bar if cases exist */}
-                    {hasUrgentCases && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-2 border-t border-white/20">
-                            <button 
-                                onClick={() => setShowUrgentModal(true)}
-                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-950/20 active:scale-95 transition-all"
-                                title="حالات التدخل العاجل للآباء الكهنة"
-                            >
-                                <span className="relative flex h-2 w-2 shrink-0">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                                </span>
-                                <span className="truncate">🚨 حالات التدخل العاجل ({urgentCount})</span>
-                            </button>
-
-                            {permission === 'default' && (
-                                <button
-                                    onClick={requestNotificationPermission}
-                                    className="w-full sm:w-auto text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-xl transition-colors flex items-center justify-center gap-1 shrink-0 backdrop-blur-md"
-                                    title="تفعيل إشعارات التدخل العاجل على الهاتف"
-                                >
-                                    🔔 تفعيل الإشعارات
-                                </button>
-                            )}
-                        </div>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {!selectedOsraKey && <button onClick={handleCleanupAttendance} disabled={isCleaningUp} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-bold disabled:opacity-60">{isCleaningUp ? 'جارٍ تنظيف السجلات…' : '🧹 تنظيف السجلات المكررة'}</button>}
+                        {hasUrgentCases && permission === 'default' && <button onClick={requestNotificationPermission} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-bold">🔔 تفعيل الإشعارات</button>}
+                    </div>
                 </div>
             </header>
 

@@ -19,7 +19,18 @@ export const decryptData = clone;
 export const collection = (_, ...parts) => ({ path: parts.join('/') });
 export const doc = (_, ...parts) => ({ path: parts.join('/'), id: parts.at(-1) });
 const snapshot = path => ({ id: path.split('/').at(-1), ref: { parent: { id: path.split('/')[2], parent: { id: path.split('/')[1] } } }, exists: () => remote.has(path), data: () => clone(remote.get(path)) });
-export const getDocsFromServer = async ref => ({ docs: [...remote.keys()].filter(k => k.startsWith(ref.path + '/') && k.split('/').length === 4).map(snapshot) });
-export const runTransaction = async (_, fn) => fn({ get: async ref => snapshot(ref.path), set: (ref, data) => remote.set(ref.path, clone(data)) });
+export const network = { read: null, write: null };
+export const getDocsFromServer = async ref => {
+    await network.read?.(ref);
+    return { docs: [...remote.keys()].filter(k => k.startsWith(ref.path + '/') && k.split('/').length === 4).map(snapshot) };
+};
+export const getDocs = getDocsFromServer;
+export const getDoc = async ref => { await network.read?.(ref); return snapshot(ref.path); };
+export const setDoc = async (ref, data, options) => {
+    await network.write?.(ref, data);
+    remote.set(ref.path, { ...(options?.merge ? remote.get(ref.path) : {}), ...clone(data) });
+};
+export const deleteDoc = async ref => { await network.write?.(ref); remote.delete(ref.path); };
+export const collectionGroup = (_, name) => ({ path: name });
 
 export const logActivity = async () => {};

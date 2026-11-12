@@ -1,7 +1,8 @@
+import { createSyncDeadline } from '../utils/syncDeadline';
 import { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../db/firebase';
-import { scopedSyncKeys, decodeCloudRecord, reconcileCloudChild, reconcileCloudAttendance, syncScopedClassesFromCloud } from '../db/childSync';
+import { scopedSyncKeys, decodeCloudRecord, reconcileCloudChildrenBatch, reconcileCloudAttendanceBatch, syncScopedClassesFromCloud } from '../db/childSync';
 
 export default function useChildrenRealtimeSync() {
     const [scope, setScope] = useState(() => JSON.stringify(scopedSyncKeys().sort()));
@@ -26,11 +27,14 @@ export default function useChildrenRealtimeSync() {
                 if (snapshot.metadata.hasPendingWrites || snapshot.metadata.fromCache) return;
                 queue = queue.then(async () => {
                     if (cancelled) return;
-                    for (const change of snapshot.docChanges()) {
-                        if (change.type === 'removed') continue; // Never infer deletion from absence.
-                        const data = decodeCloudRecord(change.doc);
-                        await (type !== 'attendance' ? reconcileCloudChild(data) : reconcileCloudAttendance(data));
-                    }
+                    const deadline = createSyncDeadline('التحديث اللحظي');
+                    try {
+                        await deadline.run(async () => {
+                            const rows = snapshot.docChanges().filter(change => change.type !== 'removed').map(change => decodeCloudRecord(change.doc));
+                            if (type === 'attendance') await reconcileCloudAttendanceBatch(rows, deadline);
+                            else await reconcileCloudChildrenBatch(rows, deadline);
+                        });
+                    } finally { deadline.cancel(); }
                 }).catch(fail);
             }, fail
         )));

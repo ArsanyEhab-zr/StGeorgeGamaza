@@ -1,8 +1,9 @@
 import { syncScopedClassesFromCloud, scopedSyncKeys, deleteChildEverywhere } from './childSync';
 export { syncScopedClassesFromCloud, deleteChildEverywhere, restoreChildEverywhere } from './childSync';
-import { db } from './database';
+import { db as localDb } from './database';
+import { createSyncDeadline, beginSyncStatus, boundedDatabase } from '../utils/syncDeadline';
 import { firestore } from './firebase';
-import { collection, collectionGroup, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, collectionGroup, getDocs as firestoreGetDocs, doc, setDoc as firestoreSetDoc, deleteDoc as firestoreDeleteDoc, getDoc as firestoreGetDoc } from 'firebase/firestore';
 
 // 🌟 استدعاء دوال التشفير وفك التشفير اللي عملناهم
 import { encryptData, decryptData } from '../encryption';
@@ -27,7 +28,12 @@ const formatDetailedList = (list) => {
     return `${safeList.slice(0, 4).join('، ')} ... (+${safeList.length - 4} آخرين)`;
 };
 
-const _syncDataWithCloud = async () => {
+const _syncDataWithCloud = async deadline => {
+    const db = boundedDatabase(localDb, deadline);
+    const getDocs = (...args) => deadline.run(() => firestoreGetDocs(...args));
+    const getDoc = (...args) => deadline.run(() => firestoreGetDoc(...args));
+    const setDoc = (...args) => deadline.run(() => firestoreSetDoc(...args));
+    const deleteDoc = (...args) => deadline.run(() => firestoreDeleteDoc(...args));
     try {
         // 🔐 1. هنجيب مفتاح الكلاود 
         const currentSyncKey = localStorage.getItem('currentSyncKey');
@@ -124,7 +130,7 @@ const _syncDataWithCloud = async () => {
 
         const now = new Date().toISOString();
         const lastSyncTime = '1970-01-01T00:00:00.000Z';
-        const scopedResult = await syncScopedClassesFromCloud(scopedSyncKeys());
+        const scopedResult = await deadline.run(() => syncScopedClassesFromCloud(scopedSyncKeys(), deadline));
 
         // 🌟 3. السحب أولاً (Pull) من السحابة 🌟
         let cloudEvents = [];
@@ -562,12 +568,19 @@ let activeSync = null;
 export const syncDataWithCloud = () => {
     if (activeSync) return activeSync;
     if (!navigator.onLine) return Promise.resolve({ success: false, message: 'لا يوجد اتصال بالإنترنت' });
-    window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
-    activeSync = _syncDataWithCloud().then(result => {
-        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: result?.success ? 'success' : 'error', time: Date.now() } }));
-        return result;
-    }).finally(() => { activeSync = null; });
-    return activeSync;
+    const deadline = createSyncDeadline('المزامنة الشاملة');
+    const finishStatus = beginSyncStatus();
+    let outcome = 'error';
+    const task = deadline.run(() => _syncDataWithCloud(deadline))
+        .catch(error => ({ success: false, message: error.message }))
+        .then(result => { outcome = result?.success ? 'success' : 'error'; return result; })
+        .finally(() => {
+            deadline.cancel();
+            if (activeSync === task) activeSync = null;
+            finishStatus(outcome);
+        });
+    activeSync = task;
+    return task;
 };
 
 /**
