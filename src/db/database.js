@@ -35,8 +35,8 @@ db.version(5).stores({
 }).upgrade(tx => {
     const now = new Date().toISOString();
     return Promise.all([
-        tx.table('children').toCollection().modify({ isDirty: true, updatedAt: now, isDeleted: false }),
-        tx.table('attendance').toCollection().modify({ isDirty: true, updatedAt: now, isDeleted: false }),
+        tx.table('children').toCollection().modify(row => { row.isDirty = row.isDirty === true; row.updatedAt ??= now; }),
+        tx.table('attendance').toCollection().modify(row => { row.isDirty = row.isDirty === true; row.updatedAt ??= now; }),
         tx.table('events').toCollection().modify({ isDirty: true, updatedAt: now, isDeleted: false }),
         tx.table('grades').toCollection().modify({ isDirty: true, updatedAt: now }),
 
@@ -52,12 +52,12 @@ db.version(6).stores({
 
 }).upgrade(tx => {
     const now = new Date().toISOString();
-    // 🌟 نضيف childPhone بشكل آمن — لو السجل معهوش الحقل ده نضيفه فارغ ونعمله dirty عشان يتحمّل على السحابة
+    // Schema-only enrichment must not enqueue stale child records.
     return tx.table('children').toCollection().modify(child => {
         if (child.childPhone === undefined) {
             child.childPhone = '';
-            child.isDirty = true;
-            child.updatedAt = now;
+            // Schema enrichment is local only; it must never enqueue an upload.
+            // Preserve the edit timestamp as well as the dirty flag.
         }
     });
 });

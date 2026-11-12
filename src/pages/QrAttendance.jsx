@@ -1,3 +1,6 @@
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import { attendanceIdentity, resolveAttendanceChild } from '../utils/childIdentity';
+import { getDefaultServiceDateForClass } from '../utils/serviceWeek';
 /* eslint-disable no-unused-vars */
 import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -37,13 +40,14 @@ export default function QrAttendance() {
     // ─── Session Config State ───
     const [stage, setStage] = useState(STAGE.CONFIG);
     const [eventType, setEventType] = useState(null); // 'liturgy' | 'service'
-    const [selectedDate, setSelectedDate] = useState(() => getCurrentServiceFridayDate());
+    const [selectedDate, setSelectedDate] = useState(() => getDefaultServiceDateForClass(localStorage.getItem('currentSyncKey')));
 
     // ─── Save State ───
     const [isSaving, setIsSaving] = useState(false);
     const [saveResult, setSaveResult] = useState(null); // { success: bool, count: number, message: string } | null
 
     // ─── QR Scanner Hook ───
+    const { canonicalData } = useChurchDataEngine();
     const scanner = useQrScanner();
 
     // ─── Derived ───
@@ -90,11 +94,11 @@ export default function QrAttendance() {
             const alreadyRecordedSet = new Set(
                 existingActive
                     .filter(r => r.type === type)
-                    .map(r => r.childId)
+                    .map(r => String(resolveAttendanceChild(r, canonicalData)?.id))
             );
 
             // Filter out children already recorded for this date+type
-            const newChildIds = childIds.filter(id => !alreadyRecordedSet.has(id));
+            const newChildIds = [...new Set(childIds.map(id => canonicalData.childMapById.get(String(id))?.id).filter(id => id != null))].filter(id => !alreadyRecordedSet.has(String(id)));
 
             if (newChildIds.length === 0) {
                 setSaveResult({
@@ -109,13 +113,14 @@ export default function QrAttendance() {
             // ─── Atomic Transaction: Insert Attendance + Update Children ───
             await db.transaction('rw', db.attendance, db.children, async () => {
                 for (const childId of newChildIds) {
-                    const child = await db.children.get(childId);
+                    const child = canonicalData.childMapById.get(String(childId));
+                    if (!child) continue;
                     const targetSyncKey = child?.syncKey || currentSyncKey;
 
                     // 1. Insert attendance record with explicit present status
                     await db.attendance.add({
                         date,
-                        childId,
+                        ...attendanceIdentity(child),
                         type,
                         status: 'present',
                         syncKey: targetSyncKey,
@@ -181,7 +186,7 @@ export default function QrAttendance() {
         } finally {
             setIsSaving(false);
         }
-    }, [isSaving, scanner.scannedList, scanner.scannedCount, eventType, selectedDate, triggerAutoSync]);
+    }, [canonicalData, isSaving, scanner.scannedList, scanner.scannedCount, eventType, selectedDate, triggerAutoSync]);
 
     // ─── Dismiss save result and reset session ───
     const handleDismissSaveResult = useCallback(() => {
@@ -190,7 +195,7 @@ export default function QrAttendance() {
         if (wasSuccess) {
             scanner.clearAll();
             setEventType(null);
-            setSelectedDate(getCurrentServiceFridayDate());
+            setSelectedDate(getDefaultServiceDateForClass(localStorage.getItem('currentSyncKey')));
             setStage(STAGE.CONFIG);
         }
     }, [saveResult, scanner]);

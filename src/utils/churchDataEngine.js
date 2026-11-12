@@ -1,7 +1,5 @@
+import { groupChildren, preferredChild, childAliases, childNameKey, resolveAttendanceChild, attendanceIdentity, timestamp } from './childIdentity';
 import { db } from '../db/database';
-import { firestore } from '../db/firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
-import { normalizeArabicText } from './serviceWeek';
 
 /**
  * Normalizes a phone number to its last 10 digits for deterministic duplicate detection.
@@ -40,7 +38,7 @@ export const getConfiguredValidSyncKeys = () => {
             .map(o => String(o?.syncKey || '').trim())
             .filter(Boolean);
         return keys.length > 0 ? new Set(keys) : null;
-    } catch (_e) {
+    } catch {
         return null;
     }
 };
@@ -48,23 +46,6 @@ export const getConfiguredValidSyncKeys = () => {
 /**
  * Helper to compare two child records and pick the more authoritative / newer one.
  */
-const pickPreferredChildRecord = (existing, candidate) => {
-    const existingTime = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
-    const candidateTime = candidate.updatedAt ? new Date(candidate.updatedAt).getTime() : 0;
-    if (candidateTime > existingTime) return candidate;
-    if (existingTime > candidateTime) return existing;
-
-    // Fallback: pick the one with more populated fields
-    const score = (c) =>
-        (c.profilePic ? 2 : 0) +
-        (c.motherPhone ? 1 : 0) +
-        (c.fatherPhone ? 1 : 0) +
-        (c.childPhone ? 1 : 0) +
-        (c.birthDate ? 1 : 0) +
-        (c.address ? 1 : 0);
-    return score(candidate) >= score(existing) ? candidate : existing;
-};
-
 /**
  * 1. Canonical Active Children Resolver
  * Strictly excludes deleted or nameless records, normalizes syncKey, and deduplicates
@@ -74,148 +55,22 @@ const pickPreferredChildRecord = (existing, candidate) => {
  * @param {Array|Set|null} allowedSyncKeys - Optional set/array of allowed class syncKeys
  */
 export const getCanonicalActiveChildren = (allChildren = [], allowedSyncKeys = null) => {
-    const allowedSet = allowedSyncKeys
-        ? new Set(Array.from(allowedSyncKeys).map(k => String(k || '').trim()).filter(Boolean))
-        : null;
-
-    // Step 1: Filter out deleted, invalid, or out-of-scope children
-    const validRaw = [];
-    for (const raw of (allChildren || [])) {
-        if (!raw || raw.isDeleted === true) continue;
-        const trimmedName = String(raw.name || '').trim();
-        if (!trimmedName) continue;
-
-        const syncKey = String(raw.syncKey || '').trim();
-        if (!syncKey || syncKey === 'MASTER_ACCESS' || syncKey === 'ADMIN_MODE' || syncKey === 'STAGE_ADMIN') {
-            continue;
-        }
-        if (allowedSet && allowedSet.size > 0 && !allowedSet.has(syncKey)) {
-            continue;
-        }
-
-        const canonicalId = String(raw.id ?? raw.cloudId ?? '').trim();
-        if (!canonicalId) continue;
-
-        validRaw.push({
-            ...raw,
-            id: raw.id ?? canonicalId,
-            name: trimmedName,
-            syncKey
-        });
-    }
-
-    // Step 2: Deduplicate by canonical ID (id / cloudId)
-    const byIdMap = new Map();
-    const aliasIdsByCanonicalId = new Map(); // canonicalId -> Set of all raw IDs merged into it
-
-    for (const child of validRaw) {
-        const idStr = String(child.id).trim();
-        const cloudIdStr = child.cloudId ? String(child.cloudId).trim() : '';
-
-        const existingKey = byIdMap.has(idStr)
-            ? idStr
-            : (cloudIdStr && byIdMap.has(cloudIdStr) ? cloudIdStr : null);
-
-        if (existingKey) {
-            const existing = byIdMap.get(existingKey);
-            const preferred = pickPreferredChildRecord(existing, child);
-            const prefIdStr = String(preferred.id).trim();
-            byIdMap.delete(existingKey);
-            byIdMap.set(prefIdStr, preferred);
-
-            const aliases = aliasIdsByCanonicalId.get(existingKey) || new Set([existingKey]);
-            aliases.add(idStr);
-            if (cloudIdStr) aliases.add(cloudIdStr);
-            aliasIdsByCanonicalId.delete(existingKey);
-            aliasIdsByCanonicalId.set(prefIdStr, aliases);
-        } else {
-            byIdMap.set(idStr, child);
-            const aliases = new Set([idStr]);
-            if (cloudIdStr) aliases.add(cloudIdStr);
-            aliasIdsByCanonicalId.set(idStr, aliases);
-        }
-    }
-
-    // Step 3: Within the same syncKey, deduplicate exact duplicate full names (normalized Arabic name + same phone)
-    const byFingerprintMap = new Map(); // `${syncKey}::${normName}::${phone}` -> canonicalIdStr
-    const finalByIdMap = new Map();
-
-    for (const [idStr, child] of byIdMap.entries()) {
-        const normName = normalizeArabicText(child.name);
-        const nameWords = normName.split(' ').filter(Boolean);
-        const primaryPhone = getPrimaryNormalizedPhone(child);
-
-        // Deduplicate if same class + same normalized full name (3+ parts) + same phone (or both empty phone with 4+ parts)
-        let fingerprint = null;
-        if (nameWords.length >= 3 && primaryPhone) {
-            fingerprint = `${child.syncKey}::${normName}::${primaryPhone}`;
-        } else if (nameWords.length >= 4 && !primaryPhone) {
-            fingerprint = `${child.syncKey}::${normName}::NO_PHONE`;
-        }
-
-        if (fingerprint && byFingerprintMap.has(fingerprint)) {
-            const existingIdStr = byFingerprintMap.get(fingerprint);
-            const existing = finalByIdMap.get(existingIdStr);
-            if (existing) {
-                const preferred = pickPreferredChildRecord(existing, child);
-                const prefIdStr = String(preferred.id).trim();
-
-                finalByIdMap.delete(existingIdStr);
-                finalByIdMap.set(prefIdStr, preferred);
-                byFingerprintMap.set(fingerprint, prefIdStr);
-
-                const existingAliases = aliasIdsByCanonicalId.get(existingIdStr) || new Set([existingIdStr]);
-                const candidateAliases = aliasIdsByCanonicalId.get(idStr) || new Set([idStr]);
-                for (const a of candidateAliases) existingAliases.add(a);
-                aliasIdsByCanonicalId.delete(existingIdStr);
-                aliasIdsByCanonicalId.set(prefIdStr, existingAliases);
-                continue;
-            }
-        }
-
-        finalByIdMap.set(idStr, child);
-        if (fingerprint) {
-            byFingerprintMap.set(fingerprint, idStr);
-        }
-    }
-
-    // Step 4: Build authoritative return structures
-    const activeChildren = Array.from(finalByIdMap.values());
-    const childrenByClassMap = new Map();
-    const activeChildIdSetByClass = new Map();
-    const childMapById = new Map();
-
+    const allowed = allowedSyncKeys == null ? null : new Set(Array.from(allowedSyncKeys).map(String));
+    const groups = groupChildren(allChildren.filter(c => c && c.syncKey && (!allowed || allowed.has(String(c.syncKey)))));
+    const activeChildren = groups.map(preferredChild).filter(c => !c.isDeleted && c.name && !['MASTER_ACCESS', 'ADMIN_MODE', 'STAGE_ADMIN'].includes(c.syncKey));
+    const childrenByClassMap = new Map(), activeChildIdSetByClass = new Map(), childMapById = new Map();
     for (const child of activeChildren) {
-        const syncKey = child.syncKey;
-        const canonicalIdStr = String(child.id).trim();
-
-        if (!childrenByClassMap.has(syncKey)) {
-            childrenByClassMap.set(syncKey, []);
+        if (!childrenByClassMap.has(child.syncKey)) childrenByClassMap.set(child.syncKey, []);
+        childrenByClassMap.get(child.syncKey).push(child);
+        if (!activeChildIdSetByClass.has(child.syncKey)) activeChildIdSetByClass.set(child.syncKey, new Set());
+        for (const alias of childAliases(child)) {
+            activeChildIdSetByClass.get(child.syncKey).add(alias);
+            childMapById.set(alias, child);
+            childMapById.set(`${child.syncKey}::id::${alias}`, child);
         }
-        childrenByClassMap.get(syncKey).push(child);
-
-        if (!activeChildIdSetByClass.has(syncKey)) {
-            activeChildIdSetByClass.set(syncKey, new Set());
-        }
-        const classIdSet = activeChildIdSetByClass.get(syncKey);
-
-        const aliases = aliasIdsByCanonicalId.get(canonicalIdStr) || new Set([canonicalIdStr]);
-        aliases.add(canonicalIdStr);
-        if (child.cloudId) aliases.add(String(child.cloudId).trim());
-
-        for (const aliasId of aliases) {
-            if (!aliasId) continue;
-            classIdSet.add(aliasId);
-            childMapById.set(aliasId, child);
-        }
+        childMapById.set(childNameKey(child), child);
     }
-
-    return {
-        activeChildren,
-        childrenByClassMap,
-        activeChildIdSetByClass,
-        childMapById
-    };
+    return { activeChildren, childrenByClassMap, activeChildIdSetByClass, childMapById };
 };
 
 /**
@@ -243,7 +98,7 @@ export const isAttendanceRecordPresent = (r) => {
  */
 export const getValidatedClassAttendance = (allAttendance = [], canonicalData, options = {}) => {
     const safeCanonical = canonicalData || getCanonicalActiveChildren([]);
-    const { childMapById, childrenByClassMap, activeChildren } = safeCanonical;
+    const { childrenByClassMap, activeChildren } = safeCanonical;
 
     const {
         targetSyncKey = null,
@@ -282,6 +137,7 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
                 liturgyPresentIds: new Set(),
                 tasbehaPresentIds: new Set(),
                 visitationPresentIds: new Set(),
+                recordedService: false,
                 explicitAbsentServiceIds: new Set(),
                 explicitExcusedServiceIds: new Set()
             });
@@ -300,8 +156,8 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
     const deduplicatedRowsMap = new Map();
 
     for (const r of (allAttendance || [])) {
-        if (!r || r.isDeleted === true) continue;
-        if (!r.date || !r.type || r.childId == null) continue;
+        if (!r) continue;
+        if (!r.date || !r.type) continue;
 
         const rDate = String(r.date).split('T')[0];
         if (exactDate && rDate !== exactDate) continue;
@@ -309,8 +165,7 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
         if (endDate && rDate > endDate) continue;
 
         // CRITICAL RULE #2: Look up r.childId in canonicalData.childMapById
-        const rawChildIdStr = String(r.childId).trim();
-        const canonicalChild = childMapById.get(rawChildIdStr);
+        const canonicalChild = resolveAttendanceChild(r, safeCanonical);
         if (!canonicalChild) {
             // Child was deleted or is a ghost/orphaned record -> IGNORE completely!
             continue;
@@ -340,6 +195,8 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
     // Process deduplicated valid records
     for (const { record: r, canonicalIdStr, authoritativeSyncKey } of deduplicatedRowsMap.values()) {
         const classEntry = ensureClassEntry(authoritativeSyncKey);
+        if (r.isDeleted) continue;
+        if (r.type === 'service') classEntry.recordedService = true;
 
         if (isAttendanceRecordPresent(r)) {
             if (r.type === 'service') {
@@ -418,7 +275,7 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
             visitationCount,
             attendanceCount: presentCount,
             totalVisitationRecords: visitationCount,
-            hasRecordedAttendance: presentCount > 0,
+            hasRecordedAttendance: sets.recordedService,
             hasRecordedVisitation: visitationCount > 0,
             servicePresentIds: sets.servicePresentIds,
             liturgyPresentIds: sets.liturgyPresentIds,
@@ -459,118 +316,30 @@ export const getValidatedClassAttendance = (allAttendance = [], canonicalData, o
  * 🧹 Cleans up duplicate (date, childId, type) rows and orphaned attendance rows in Dexie
  * (and optionally removes orphaned cloud docs in Firestore when requested).
  */
-export const cleanupDuplicateAndOrphanedAttendance = async ({ removeCloudOrphans = false } = {}) => {
-    try {
-        const allChildren = await db.children.toArray();
-        const allAttendance = await db.attendance.toArray();
-
-        // Only purge orphans if we actually have children loaded in the database
-        const hasLoadedChildren = allChildren.some(c => !c.isDeleted);
-        const canonicalData = getCanonicalActiveChildren(allChildren);
-        const { childMapById } = canonicalData;
-
-        const idsToDelete = [];
-        const cloudDocsToDelete = [];
-        const recordsToUpdate = [];
-
-        const seenByDateChildType = new Map(); // `${date}::${canonicalChildId}::${type}` -> record
-
-        for (const r of allAttendance) {
-            if (!r || r.id == null) continue;
-
-            // 1. Purge already soft-deleted clean records
-            if (r.isDeleted === true && !r.isDirty) {
-                idsToDelete.push(r.id);
-                continue;
-            }
-            if (r.isDeleted === true) continue;
-
-            // 2. Check if child exists in canonical active children
-            const rawChildIdStr = String(r.childId ?? '').trim();
-            const canonicalChild = childMapById.get(rawChildIdStr);
-
-            if (hasLoadedChildren && !canonicalChild) {
-                idsToDelete.push(r.id);
-                if (removeCloudOrphans && r.syncKey && r.date && r.childId && r.type) {
-                    cloudDocsToDelete.push({
-                        syncKey: String(r.syncKey).trim(),
-                        docId: `${r.date}_${r.childId}_${r.type}`
-                    });
-                }
-                continue;
-            }
-
-            const canonicalIdStr = canonicalChild ? String(canonicalChild.id).trim() : rawChildIdStr;
-            const authoritativeSyncKey = canonicalChild ? canonicalChild.syncKey : String(r.syncKey || '').trim();
-            const dateStr = String(r.date || '').split('T')[0];
-            const typeStr = String(r.type || '').trim();
-
-            if (!dateStr || !canonicalIdStr || !typeStr) {
-                idsToDelete.push(r.id);
-                continue;
-            }
-
-            // 3. Deduplicate by (date, canonicalChildId, type)
-            const key = `${dateStr}::${canonicalIdStr}::${typeStr}`;
-            const existing = seenByDateChildType.get(key);
-
-            if (!existing) {
-                seenByDateChildType.set(key, { record: r, canonicalIdStr, authoritativeSyncKey });
-            } else {
-                const existingTime = existing.record.updatedAt ? new Date(existing.record.updatedAt).getTime() : 0;
-                const candidateTime = r.updatedAt ? new Date(r.updatedAt).getTime() : 0;
-
-                if (candidateTime >= existingTime) {
-                    idsToDelete.push(existing.record.id);
-                    seenByDateChildType.set(key, { record: r, canonicalIdStr, authoritativeSyncKey });
-                } else {
-                    idsToDelete.push(r.id);
-                }
-            }
-        }
-
-        // 4. Ensure remaining valid records have canonical childId and authoritative syncKey
-        for (const { record: r, canonicalIdStr, authoritativeSyncKey } of seenByDateChildType.values()) {
-            const needsSyncKeyFix = authoritativeSyncKey && r.syncKey !== authoritativeSyncKey;
-            const needsChildIdFix = String(r.childId) !== canonicalIdStr;
-            if (needsSyncKeyFix || needsChildIdFix) {
-                recordsToUpdate.push({
-                    id: r.id,
-                    changes: {
-                        syncKey: authoritativeSyncKey || r.syncKey,
-                        childId: canonicalIdStr
-                    }
-                });
-            }
-        }
-
-        if (idsToDelete.length > 0) {
-            await db.attendance.bulkDelete(idsToDelete);
-        }
-
-        for (const item of recordsToUpdate) {
-            await db.attendance.update(item.id, item.changes);
-        }
-
-        if (removeCloudOrphans && navigator.onLine && cloudDocsToDelete.length > 0) {
-            for (const { syncKey, docId } of cloudDocsToDelete) {
-                if (!syncKey || syncKey === 'MASTER_ACCESS' || syncKey === 'ADMIN_MODE' || syncKey === 'STAGE_ADMIN') continue;
-                try {
-                    await deleteDoc(doc(firestore, 'Osras', syncKey, 'attendance', docId));
-                } catch (_e) {
-                    // Ignore cloud deletion errors
-                }
-            }
-        }
-
-        return {
-            deletedCount: idsToDelete.length,
-            fixedCount: recordsToUpdate.length,
-            totalCleaned: idsToDelete.length + recordsToUpdate.length
-        };
-    } catch (err) {
-        console.error('Error cleaning up attendance records:', err);
-        return { deletedCount: 0, fixedCount: 0, totalCleaned: 0, error: err.message };
+export const consolidateLocalDexieDuplicates = async () => db.transaction('rw', db.children, db.attendance, async () => {
+    const children = await db.children.toArray();
+    const canonical = getCanonicalActiveChildren(children);
+    let deletedCount = 0, fixedCount = 0;
+    for (const group of groupChildren(children)) {
+        if (group.length < 2) continue;
+        const winner = preferredChild(group);
+        // Keep the local primary key stable; cloudId remains the transport identifier.
+        await db.children.put({ ...winner, isDirty: group.some(c => c.isDirty) });
+        for (const child of group) if (child.id !== winner.id) { await db.children.delete(child.id); deletedCount++; }
     }
-};
-
+    const seen = new Map();
+    for (const row of await db.attendance.toArray()) {
+        const child = resolveAttendanceChild(row, canonical);
+        if (!child) continue; // An incomplete class download is never proof of an orphan.
+        const updated = { ...row, ...attendanceIdentity(child) };
+        const key = `${child.syncKey}::${row.date}::${updated.childId}::${row.type}`;
+        const previous = seen.get(key);
+        if (!previous || timestamp(row.updatedAt) >= timestamp(previous.updatedAt)) {
+            if (previous) { await db.attendance.delete(previous.id); deletedCount++; }
+            seen.set(key, updated);
+        } else { await db.attendance.delete(row.id); deletedCount++; }
+    }
+    for (const row of seen.values()) { await db.attendance.put(row); fixedCount++; }
+    return { deletedCount, fixedCount, totalCleaned: deletedCount + fixedCount };
+});
+export const cleanupDuplicateAndOrphanedAttendance = consolidateLocalDexieDuplicates;

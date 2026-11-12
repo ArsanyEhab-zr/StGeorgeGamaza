@@ -1,5 +1,5 @@
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 import React, { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { Link } from 'react-router-dom';
 import { Search, Phone, Info, ChevronLeft, Gift, Cake } from 'lucide-react';
@@ -13,19 +13,9 @@ export default function InfoDirectory() {
     // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
     const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-    const children = useLiveQuery(() => {
-        if (isMaster) {
-            return db.children.filter(c => !c.isDeleted).toArray()
-                .then(arr => searchQuery
-                    ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                    : arr);
-        }
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray()
-            .then(arr => searchQuery
-                ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                : arr);
-    }, [searchQuery, currentSyncKey, isMaster]);
+    const { activeChildren } = useChurchDataEngine();
+    const children = activeChildren.filter(c => !searchQuery || c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+
 
     // 🌟 دالة لاستخراج شهر الميلاد للفلترة
     const getBirthMonth = (child) => {

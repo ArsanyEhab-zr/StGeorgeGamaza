@@ -1,3 +1,4 @@
+import { resolveAttendanceChild } from '../utils/childIdentity';
 import React, { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
@@ -89,7 +90,7 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
             .between(startBound, endBound, true, true)
             .toArray();
 
-        return (records || []).filter(r => !r.isDeleted);
+        return records || [];
     }, [periodBounds.startBound, periodBounds.endBound]) || [];
 
     // Helper to resolve Osra Name
@@ -123,8 +124,8 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
         // Deduplicate attendance rows by (date, canonicalChildId, type) and group by canonicalChildId
         const dedupedByKey = new Map();
         for (const r of attendanceRecords) {
-            if (!r || r.isDeleted === true || !r.date || !r.type || r.childId == null) continue;
-            const canonicalChild = childMapById.get(String(r.childId).trim());
+            if (!r || !r.date || !r.type) continue;
+            const canonicalChild = resolveAttendanceChild(r, canonicalData);
             if (!canonicalChild) continue; // Ignore orphaned/deleted children
 
             const cid = String(canonicalChild.id).trim();
@@ -146,6 +147,7 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
         const actualServiceDatesByClass = new Map();
 
         for (const { record: r, canonicalChild, cid, dStr } of dedupedByKey.values()) {
+            if (r.isDeleted) continue;
             if (!attByChild[cid]) attByChild[cid] = [];
             attByChild[cid].push({ ...r, date: dStr });
 

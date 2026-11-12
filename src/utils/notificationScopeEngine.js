@@ -140,6 +140,7 @@ export function extractAllOsrasFromSettings(appSettingsInput = null, extraSyncKe
                 syncKey: sk,
                 name: osra.name || sk,
                 serviceName,
+                serviceId: service.id,
                 stageName,
                 logo: osra.logo || service.logo || ''
             });
@@ -224,7 +225,7 @@ export function resolveServantNotificationScope(
     }
 
     const roleRaw = String(servant.role || '').trim();
-    const roleNorm = normalizeArabicForMatch(roleRaw);
+    const roleNorm = normalizeArabicForMatch(roleRaw).replace(/الخدمه/g, 'خدمه').replace(/المرحله/g, 'مرحله');
     const allowedClassesRaw = Array.isArray(servant.allowedClasses)
         ? servant.allowedClasses.map(k => String(k || '').trim()).filter(Boolean)
         : [];
@@ -244,11 +245,13 @@ export function resolveServantNotificationScope(
     // فحص المستوى الثالث: أمين مرحلة
     const isStageLeaderRole =
         currentSyncKey === 'STAGE_ADMIN' ||
+        roleNorm === 'stage_admin' ||
         roleNorm.includes('امين مرحله') ||
         roleNorm.includes('أمين مرحلة');
 
     // فحص المستوى الثاني: خادم مرحلة أو خادم له عدة فصول في نفس المرحلة
     const isStageServantRole =
+        roleNorm === 'data_entry' ||
         roleNorm.includes('خادم مرحله') ||
         (!isMasterSyncKey && !isMasterRole && !isStageLeaderRole && allowedClassesRaw.length > 1);
 
@@ -292,11 +295,15 @@ export function resolveServantNotificationScope(
 
     // تحديد فصول المرحلة (stageSyncKeys)
     const stageOsras = osrasByStage.get(stageName) || [];
-    const inferredStageKeys = stageOsras.map(o => o.syncKey);
+    const assignedStages = Array.isArray(servant.assignedStages) ? servant.assignedStages.map(String) : [];
+    const assignedStageKeys = allOsras.filter(o => assignedStages.includes('all') || [o.stageId, o.serviceId, o.stageName, o.serviceName].some(v => v != null && assignedStages.includes(String(v)))).map(o => o.syncKey);
+    const inferredStageKeys = assignedStages.length ? assignedStageKeys : stageOsras.map(o => o.syncKey);
 
     let stageSyncKeys = [];
     if (tier === 'master_detailed') {
         stageSyncKeys = Array.from(osraMapBySyncKey.keys());
+    } else if (assignedStages.length > 0) {
+        stageSyncKeys = assignedStageKeys;
     } else if (allowedClassesRaw.length > 0) {
         stageSyncKeys = Array.from(new Set([...allowedClassesRaw, ...inferredStageKeys]));
     } else {
@@ -311,7 +318,7 @@ export function resolveServantNotificationScope(
         allowedSyncKeys = Array.from(osraMapBySyncKey.keys());
     } else if (tier === 'stage_leader_detailed' || tier === 'stage_servant') {
         allowedSyncKeys = allowedClassesRaw.length > 0 ? allowedClassesRaw : stageSyncKeys;
-        if (allowedSyncKeys.length === 0 && primarySyncKey) {
+        if (allowedSyncKeys.length === 0 && primarySyncKey && assignedStages.length === 0) {
             allowedSyncKeys = [primarySyncKey];
         }
     } else {

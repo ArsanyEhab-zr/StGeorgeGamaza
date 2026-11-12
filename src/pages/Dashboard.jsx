@@ -1,3 +1,6 @@
+import { scopedSyncKeys } from '../db/childSync';
+import { resolveAttendanceChild } from '../utils/childIdentity';
+import ScopedSyncButton from '../components/ScopedSyncButton';
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
 import { uploadImageToCloudinary, uploadImageWithFallback } from '../utils/cloudinary';
@@ -23,7 +26,7 @@ import { getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTyp
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
-import { deleteChildRecord } from '../db/sync';
+import { deleteChildEverywhere } from '../db/sync';
 import {
     getCurrentServiceFridayDate,
     getServiceWeekRange,
@@ -79,25 +82,11 @@ export default function Dashboard() {
         if (currentSyncKey === 'STAGE_ADMIN' && allowedClasses.length > 0) {
             list = list.filter(o => allowedClasses.includes(o.syncKey));
         }
-        return list;
+        return list.filter(o => scopedSyncKeys().includes(o.syncKey));
     }, [appSettings.services, currentSyncKey, JSON.stringify(allowedClasses)]);
 
     // 🌟 Single Source of Truth (SSOT) Engine for children & attendance
-    const engineScope = useMemo(() => {
-        if (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE') {
-            if (activeClassKey && activeClassKey !== 'MASTER_ACCESS' && activeClassKey !== 'ADMIN_MODE' && activeClassKey !== 'all') {
-                return activeClassKey;
-            }
-            return allAvailableOsras.map(o => o.syncKey);
-        }
-        if (currentSyncKey === 'STAGE_ADMIN') {
-            if (activeClassKey && activeClassKey !== 'all' && allowedClasses.includes(activeClassKey)) {
-                return activeClassKey;
-            }
-            return allowedClasses;
-        }
-        return currentSyncKey;
-    }, [currentSyncKey, activeClassKey, allAvailableOsras, allowedClasses]);
+    const engineScope = scopedSyncKeys().includes(activeClassKey) ? activeClassKey : scopedSyncKeys();
 
     const {
         isLoading: isEngineLoading,
@@ -225,6 +214,7 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-2 shrink-0">
                         <ScopedNotificationCenter variant="dark" />
+                            <ScopedSyncButton />
                     </div>
                 </div>
             </header>
@@ -403,7 +393,7 @@ function StatsView({ childrenData, appSettings }) {
 
     // 🌟 جلب داتا الغياب للسنة الحالية
     const attendanceData = useLiveQuery(() =>
-        db.attendance.filter(a => a.date && a.date.startsWith(currentYear.toString())).toArray()
+        db.attendance.toArray()
     ) || [];
 
     // 🌟 Anchored Thursday-to-Wednesday service cycle counters (SSOT)
@@ -455,7 +445,7 @@ function StatsView({ childrenData, appSettings }) {
         const actualDatesSet = new Set();
         attendanceData.forEach(a => {
             if (!a || a.isDeleted || !a.date || !a.date.startsWith(currentMonthPrefix)) return;
-            if (a.type === 'service' && isAttendanceRecordPresent(a) && canonicalData.childMapById.has(String(a.childId).trim())) {
+            if (a.type === 'service' && isAttendanceRecordPresent(a) && resolveAttendanceChild(a, canonicalData)) {
                 actualDatesSet.add(a.date);
             }
         });
@@ -555,7 +545,7 @@ function StatsView({ childrenData, appSettings }) {
             const calculatedAge = calculateExactAge(c.birthDate);
 
             // حساب الحضور الفعلي الموثق بدون تكرار أو غياب
-            const childAtt = attendanceData.filter(a => String(a.childId).trim() === String(c.id).trim() && isAttendanceRecordPresent(a));
+            const childAtt = attendanceData.filter(a => resolveAttendanceChild(a, canonicalData)?.id === c.id && isAttendanceRecordPresent(a));
             const totalService = new Set(childAtt.filter(a => a.type === 'service').map(a => a.date)).size;
             const totalLiturgy = new Set(childAtt.filter(a => a.type === 'liturgy').map(a => a.date)).size;
 
@@ -627,29 +617,8 @@ function StatsView({ childrenData, appSettings }) {
             if (pass === appSettings.deletePass) {
                 try {
                     const now = new Date().toISOString();
-                    // 🪦 Soft-delete scoped children
-                    const updates = childrenData.map(c => db.children.update(c.id, { isDeleted: true, isDirty: true, updatedAt: now }));
-                    await Promise.all(updates);
-                    
-                    // 🪦 Soft-delete scoped attendance
-                    const childIds = childrenData.map(c => c.id);
-                    const allAtt = await db.attendance.toArray();
-                    const scopedAtt = allAtt.filter(a => childIds.includes(a.childId));
-                    const attUpdates = scopedAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now }));
-                    await Promise.all(attUpdates);
-
-                    // 🗑️ Direct Firestore delete for scoped children if online
-                    if (navigator.onLine && currentSyncKey && currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE' && currentSyncKey !== 'STAGE_ADMIN') {
-                        for (const c of childrenData) {
-                            try {
-                                const docRef = doc(firestore, 'Osras', currentSyncKey, 'children', String(c.id));
-                                await deleteDoc(docRef);
-                                await db.children.delete(c.id);
-                            } catch (_e) {}
-                        }
-                    }
-                    
-                    logActivity('NUCLEAR_DELETE', `مسح كامل لبيانات فصل: ${className} (${childrenData.length} مخدوم + ${scopedAtt.length} سجل حضور)`);
+                    for (const child of childrenData) await deleteChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
+                    logActivity('NUCLEAR_DELETE', `مسح كامل لبيانات فصل: ${className} (${childrenData.length} مخدوم + السجلات المرتبطة سجل حضور)`);
                     triggerAutoSync();
                     alert(`تم تنظيف قاعدة بيانات ${className} بالكامل! الأرض فاضية. 🧹`);
                 } catch (error) {
@@ -1026,7 +995,8 @@ function KidsManagerView({ childrenData }) {
                 setEditingChild(null);
                 setFormChild(emptyChild);
             }
-            await deleteChildRecord(id, childToDelete);
+            const deletion = await deleteChildEverywhere(childToDelete, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
+            if (deletion.pendingSync) alert('تم الحذف على هذا الجهاز؛ سيصل للأجهزة الأخرى عند اكتمال المزامنة.');
             triggerAutoSync();
         }
     };
@@ -1388,4 +1358,4 @@ function ActivitiesView() {
     );
 }
 
-
+

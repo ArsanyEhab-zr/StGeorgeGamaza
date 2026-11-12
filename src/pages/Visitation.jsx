@@ -1,5 +1,6 @@
+import { attendanceIdentity } from '../utils/childIdentity';
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 import React, { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import { Link } from 'react-router-dom';
 import { Search, MapPin, ClipboardList, Navigation, MessageCircleWarning, CheckCircle2, Map, Crosshair, MapPinned, Loader2, AlertTriangle, Mic } from 'lucide-react';
@@ -24,19 +25,9 @@ export default function Visitation() {
     // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
     const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
     const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-    const children = useLiveQuery(() => {
-        if (isMaster) {
-            return db.children.filter(c => !c.isDeleted).toArray()
-                .then(arr => searchQuery
-                    ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                    : arr);
-        }
-        if (!currentSyncKey) return [];
-        return db.children.where('syncKey').equals(currentSyncKey).filter(c => !c.isDeleted).toArray()
-            .then(arr => searchQuery
-                ? arr.filter(c => c.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                : arr);
-    }, [searchQuery, currentSyncKey, isMaster]);
+    const { activeChildren } = useChurchDataEngine();
+    const children = activeChildren.filter(c => !searchQuery || c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+
 
     const filteredChildren = children?.filter((c) => {
         if (activeFilter === "boys" && c.gender === "بنت") return false;
@@ -84,7 +75,10 @@ export default function Visitation() {
     const markAsVisited = async (child) => {
         try {
             const now = new Date().toISOString();
-            await db.children.update(child.id, { last_visited: today, isDirty: true, updatedAt: now });
+            await db.transaction('rw', db.children, db.attendance, async () => {
+                await db.children.update(child.id, { last_visited: today, isDirty: true, updatedAt: now });
+                await db.attendance.add({ ...attendanceIdentity(child), date: today, type: 'visitation', status: 'present', isDirty: true, isDeleted: false, updatedAt: now });
+            });
             triggerAutoSync();
             logActivity('SAVE_NOTE', `تسجيل افتقاد للمخدوم: ${child.name || child.id} بتاريخ ${today}`);
             alert("تم الافتقاد بنجاح! ✅");

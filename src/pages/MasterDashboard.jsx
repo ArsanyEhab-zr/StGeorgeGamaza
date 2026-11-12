@@ -1,3 +1,8 @@
+import { scopedSyncKeys } from '../db/childSync';
+import { resolveServantNotificationScope } from '../utils/notificationScopeEngine';
+import { childAliases, attendanceIdentity } from '../utils/childIdentity';
+import ScopedSyncButton from '../components/ScopedSyncButton';
+import { deleteChildEverywhere } from '../db/sync';
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -46,7 +51,7 @@ export default function MasterDashboard() {
     const isStageAdmin = currentServant.role === 'أمين مرحلة';
     const isPriest = currentServant.role === 'كاهن';
     const isAmin = currentServant.role === 'أمين خدمة' || currentServant.role === 'أمين أسرة';
-    const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin;
+    const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin || resolveServantNotificationScope().tier !== 'class_servant';
 
     // States
     const [selectedOsraKey, setSelectedOsraKey] = useState(sessionStorage.getItem('master_osraKey') || null);
@@ -68,19 +73,7 @@ export default function MasterDashboard() {
     useEffect(() => sessionStorage.setItem('master_gender', genderFilter), [genderFilter]);
     useEffect(() => sessionStorage.setItem('master_viewMode', viewMode), [viewMode]);
 
-    const allowedOsras = useMemo(() => {
-        if (isSuperAdmin || isPriest) {
-            return appSettings.services?.flatMap(s => s.osras || []) || [];
-        } else if (isStageAdmin) {
-            const allOsras = appSettings.services?.flatMap(s => s.osras || []) || [];
-            return allOsras.filter(o => (currentServant.allowedClasses || []).includes(o.syncKey));
-        } else if (isAmin) {
-            const myService = appSettings.services?.find(s => s.osras?.some(o => o.syncKey === currentSyncKey));
-            if (myService) return myService.osras || [];
-            return appSettings.services?.flatMap(s => s.osras || []) || [];
-        }
-        return [];
-    }, [appSettings, isSuperAdmin, isPriest, isAmin, isStageAdmin, currentSyncKey, currentServant.allowedClasses]);
+    const allowedOsras = (appSettings.services || []).flatMap(s => s.osras || []).filter(o => scopedSyncKeys().includes(o.syncKey));
 
     // 🌟 Single Source of Truth (SSOT) Engine for children, class counts, and validated weekly attendance
     const allowedSyncKeyList = useMemo(
@@ -241,7 +234,7 @@ export default function MasterDashboard() {
                     const child = children.find(c => c.id === childId);
                     if (!child) continue;
 
-                    const childIdStr = String(child.id);
+                    const childIdStr = String(child.cloudId || child.id);
                     const oldDocRef = doc(firestore, 'Osras', transferSourceKey, 'children', childIdStr);
                     const newDocRef = doc(firestore, 'Osras', transferTargetKey, 'children', childIdStr);
 
@@ -269,16 +262,14 @@ export default function MasterDashboard() {
 
                     const newPayload = { payload: encryptData(childDataToMigrate) };
                     batch.set(newDocRef, newPayload);
-                    if (hadRemoteDoc) {
-                        batch.delete(oldDocRef);
-                    }
+                    batch.set(oldDocRef, { payload: encryptData({ ...child, isDeleted: true, deletedAt: Date.now(), deletedBy: 'نقل فصل', updatedAt: Date.now() }), isDeleted: true, deletedAt: Date.now(), deletedBy: 'نقل فصل', updatedAt: Date.now() });
 
                     // 3. Migrate Child's Attendance in Firestore
                     for (const attDoc of sourceAttendanceDocs) {
                         try {
                             const rawAtt = attDoc.data();
                             const attData = rawAtt.payload ? decryptData(rawAtt.payload) : rawAtt;
-                            if (attData && String(attData.childId) === childIdStr) {
+                            if (attData && childAliases(child).includes(String(attData.childId))) {
                                 const newAttDocRef = doc(firestore, 'Osras', transferTargetKey, 'attendance', attDoc.id);
                                 const updatedAtt = {
                                     ...attData,
@@ -521,6 +512,7 @@ export default function MasterDashboard() {
 
                         <div className="flex items-center gap-2 shrink-0">
                             <ScopedNotificationCenter variant="amber" />
+                            <ScopedSyncButton />
                             {(isSuperAdmin || isPriest) && (
                                 <button 
                                     onClick={() => navigate('/master-logs')}
@@ -1146,10 +1138,10 @@ export default function MasterDashboard() {
                                                 try {
                                                     const now = new Date().toISOString();
                                                     const allKids = await db.children.toArray();
-                                                    await Promise.all(allKids.map(c => db.children.update(c.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                                                    for (const child of allKids.filter(c => allowedSyncKeyList.includes(c.syncKey))) await deleteChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
                                                     
                                                     const allAtt = await db.attendance.toArray();
-                                                    await Promise.all(allAtt.map(a => db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now })));
+                                                    // Linked attendance is tombstoned atomically by deleteChildEverywhere.
                                                     
                                                     logActivity('GLOBAL_WIPE', `مسح كامل لجميع الفصول (${allKids.length} مخدوم + ${allAtt.length} سجل حضور)`);
                                                     triggerAutoSync();

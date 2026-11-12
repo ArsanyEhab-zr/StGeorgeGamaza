@@ -1,3 +1,4 @@
+import { attendanceIdentity } from '../utils/childIdentity';
 import React, { useState } from 'react';
 import { X, Home, DoorOpen, Phone, CheckCircle2, Loader2, FileText, AlertCircle } from 'lucide-react';
 import { VISITATION_TYPES, getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
@@ -33,7 +34,7 @@ export default function LogVisitationModal({ isOpen, child, onClose, onSuccess }
             // 1. Log attendance record with specific visitation type
             await db.attendance.add({
                 date: todayStr,
-                childId: String(child.id),
+                ...attendanceIdentity(child),
                 type: 'visitation',
                 status: 'present',
                 visitationType: selectedType,
@@ -72,7 +73,7 @@ export default function LogVisitationModal({ isOpen, child, onClose, onSuccess }
 
             if (onSuccess) {
                 onSuccess({
-                    childId: child.id,
+                    ...attendanceIdentity(child),
                     type: selectedType,
                     label: typeInfo.label,
                     note: note.trim()

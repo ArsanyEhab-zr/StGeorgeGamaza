@@ -1,3 +1,4 @@
+import { attendanceIdentity, resolveAttendanceChild } from '../utils/childIdentity';
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable no-unused-vars */
 import React, { useState, useMemo, useEffect } from 'react';
@@ -108,7 +109,7 @@ export default function Attendance() {
     // 🌟 Single Source of Truth Engine for children & selectedDate attendance
     const {
         activeChildren: canonicalChildren,
-        validatedAttendance
+        validatedAttendance, canonicalData
     } = useChurchDataEngine(activeSyncKey, {
         exactDate: selectedDate,
         targetSyncKey: activeSyncKey
@@ -123,8 +124,10 @@ export default function Attendance() {
     const statusByChildAndType = useMemo(() => {
         const map = new Map();
         for (const r of (attendanceRecords || [])) {
-            if (!r || r.isDeleted === true || !r.childId || !r.type) continue;
-            const key = `${String(r.childId).trim()}::${r.type}`;
+            if (!r || !r.type) continue;
+            const resolvedChild = resolveAttendanceChild(r, canonicalData);
+            if (!resolvedChild) continue;
+            const key = `${String(resolvedChild.id)}::${r.type}`;
             const existing = map.get(key);
             if (!existing) {
                 map.set(key, r);
@@ -135,11 +138,11 @@ export default function Attendance() {
             }
         }
         return map;
-    }, [attendanceRecords]);
+    }, [attendanceRecords, canonicalData]);
 
     const getAttendanceStatus = (childId, type) => {
         const record = statusByChildAndType.get(`${String(childId).trim()}::${type}`);
-        if (!record) return null;
+        if (!record || record.isDeleted) return null;
         if (record.present === false || record.attended === false) return 'absent';
         return record.status || 'present';
     };
@@ -212,7 +215,7 @@ export default function Attendance() {
 
             // Fetch all records for selectedDate to deduplicate and update cleanly
             const recordsForDate = await db.attendance.where('date').equals(selectedDate).toArray();
-            const childRecordsForDate = recordsForDate.filter(a => String(a.childId).trim() === childIdStr);
+            const childRecordsForDate = recordsForDate.filter(a => resolveAttendanceChild(a, canonicalData)?.id === child.id);
             const sameTypeRecords = childRecordsForDate.filter(a => a.type === type);
 
             // Clean up any duplicate rows in db.attendance for the same (date, childId, type)
@@ -233,6 +236,7 @@ export default function Attendance() {
                 if (primaryRecord.status === status) {
                     // Clicking the same active status toggles it off (soft-delete for cloud sync)
                     await db.attendance.update(primaryRecord.id, {
+                        ...attendanceIdentity(child),
                         isDeleted: true,
                         isDirty: true,
                         syncKey: targetSyncKey,
@@ -250,7 +254,7 @@ export default function Attendance() {
                     // Update existing record to the new status
                     await db.attendance.update(primaryRecord.id, {
                         status,
-                        childId: child.id,
+                        ...attendanceIdentity(child),
                         syncKey: targetSyncKey,
                         isDeleted: false,
                         isDirty: true,
@@ -266,7 +270,7 @@ export default function Attendance() {
                 // Revive previously soft-deleted record for the same (date, childId, type) to avoid duplicate rows
                 await db.attendance.update(primaryRecord.id, {
                     date: selectedDate,
-                    childId: child.id,
+                    ...attendanceIdentity(child),
                     type,
                     status,
                     syncKey: targetSyncKey,
@@ -284,7 +288,7 @@ export default function Attendance() {
                 // Insert a single clean attendance record
                 await db.attendance.add({
                     date: selectedDate,
-                    childId: child.id,
+                    ...attendanceIdentity(child),
                     type,
                     status,
                     syncKey: targetSyncKey,
@@ -391,6 +395,7 @@ export default function Attendance() {
                         </button>
                     </div>
 
+                    <p className="mb-3 text-center font-bold" role="status">الحضور: {validatedAttendance.presentCount} من {canonicalChildren.length} — الغياب: {canonicalChildren.length - validatedAttendance.presentCount}</p>
                     <div className="relative mb-4">
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input

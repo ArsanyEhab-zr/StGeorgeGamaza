@@ -1,11 +1,12 @@
+import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import { attendanceIdentity } from '../utils/childIdentity';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import useAutoSync from '../hooks/useAutoSync';
 import { ArrowRight, Phone, Save, History, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import { logActivity } from '../utils/activityLogger';
-import { deleteChildRecord } from '../db/sync';
+import { deleteChildEverywhere } from '../db/sync';
 import { VISITATION_TYPES, getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTypes';
 import { getLocalDateString } from '../utils/serviceWeek';
 
@@ -14,7 +15,8 @@ const ChildProfile = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const childId = String(id);
-    const child = useLiveQuery(() => db.children.get(childId));
+    const { canonicalData } = useChurchDataEngine();
+    const child = canonicalData.childMapById.get(childId);
 
     const [isSaving, setIsSaving] = useState(false);
     const [aiSummary, setAiSummary] = useState('');
@@ -24,7 +26,8 @@ const ChildProfile = () => {
     const handleDeleteChild = async () => {
         if (!child) return;
         if (window.confirm(`متأكد إنك عايز تمسح المخدوم (${child.name}) نهائياً؟`)) {
-            await deleteChildRecord(childId, child);
+            const deletion = await deleteChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
+            if (deletion.pendingSync) alert('تم الحذف على هذا الجهاز؛ سيصل للأجهزة الأخرى عند اكتمال المزامنة.');
             navigate(-1);
         }
     };
@@ -55,7 +58,7 @@ const ChildProfile = () => {
         const updatedNotes = child.notes ? [...child.notes, newNote] : [newNote];
         
         // 1. Update child record with last_visited, lastVisitationType, lastVisitationLabel
-        await db.children.update(childId, { 
+        await db.children.update(child.id, {
             notes: updatedNotes, 
             last_visited: nowTs,
             lastVisitationType: visitationType,
@@ -67,7 +70,7 @@ const ChildProfile = () => {
         // 2. Also log a visitation record in db.attendance
         await db.attendance.add({
             date: todayStr,
-            childId: String(childId),
+            ...attendanceIdentity(child),
             type: 'visitation',
             status: 'present',
             visitationType: visitationType,

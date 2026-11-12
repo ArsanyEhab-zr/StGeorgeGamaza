@@ -36,12 +36,12 @@ export default function useSyncStatus() {
     const dirtyCount = useLiveQuery(async () => {
         try {
             const counts = await Promise.all([
-                db.children.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
-                db.attendance.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
-                db.events.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
-                db.grades.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
-                db.exams.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
-                db.activities.filter(x => !x.isDeleted && Boolean(x.isDirty)).count(),
+                db.children.filter(x => Boolean(x.isDirty)).count(),
+                db.attendance.filter(x => Boolean(x.isDirty)).count(),
+                db.events.filter(x => Boolean(x.isDirty)).count(),
+                db.grades.filter(x => Boolean(x.isDirty)).count(),
+                db.exams.filter(x => Boolean(x.isDirty)).count(),
+                db.activities.filter(x => Boolean(x.isDirty)).count(),
             ]);
             return counts.reduce((acc, curr) => acc + curr, 0);
         } catch {

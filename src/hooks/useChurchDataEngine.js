@@ -1,10 +1,10 @@
+import { scopedSyncKeys } from '../db/childSync';
 import { useEffect, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/database';
 import {
     getCanonicalActiveChildren,
     getValidatedClassAttendance,
-    getConfiguredValidSyncKeys,
     cleanupDuplicateAndOrphanedAttendance
 } from '../utils/churchDataEngine';
 import { getServiceWeekRange, getDefaultServiceDateForClass } from '../utils/serviceWeek';
@@ -15,59 +15,14 @@ let hasRunAutoCleanupInSession = false;
  * Resolves the effective allowed syncKeys for the current user or explicit scope argument.
  */
 export function resolveEffectiveSyncKeys(scopeSyncKeys = null) {
-    // 1. Explicit array or Set of syncKeys
+    const allowed = new Set(scopedSyncKeys());
     if (Array.isArray(scopeSyncKeys) || scopeSyncKeys instanceof Set) {
-        const arr = Array.from(scopeSyncKeys)
-            .map(item => (typeof item === 'object' && item !== null ? item.syncKey : item))
-            .map(k => String(k || '').trim())
-            .filter(Boolean);
-        return arr.length > 0 ? new Set(arr) : null;
+        return new Set(Array.from(scopeSyncKeys).map(k => String(k?.syncKey || k)).filter(k => allowed.has(k)));
     }
-
-    // 2. Explicit single syncKey string
-    if (typeof scopeSyncKeys === 'string' && scopeSyncKeys.trim()) {
-        const trimmed = scopeSyncKeys.trim();
-        if (
-            trimmed !== 'all' &&
-            trimmed !== 'ALL_CHURCH' &&
-            trimmed !== 'MASTER_ACCESS' &&
-            trimmed !== 'ADMIN_MODE' &&
-            trimmed !== 'STAGE_ADMIN'
-        ) {
-            return new Set([trimmed]);
-        }
+    if (typeof scopeSyncKeys === 'string' && !['all', 'ALL_CHURCH', 'MASTER_ACCESS', 'ADMIN_MODE', 'STAGE_ADMIN'].includes(scopeSyncKeys)) {
+        return new Set(allowed.has(scopeSyncKeys) ? [scopeSyncKeys] : []);
     }
-
-    // 3. Auto-detect from current user session in localStorage
-    if (typeof window !== 'undefined' && window.localStorage) {
-        const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '').trim();
-        const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
-        const isSuperAdmin =
-            currentSyncKey === 'MASTER_ACCESS' ||
-            currentSyncKey === 'ADMIN_MODE' ||
-            currentServant.role === 'أدمن مساعد' ||
-            currentServant.role === 'كاهن';
-        const isStageAdmin =
-            currentSyncKey === 'STAGE_ADMIN' ||
-            currentServant.role === 'أمين مرحلة';
-
-        if (isStageAdmin) {
-            const allowed = (currentServant.allowedClasses || [])
-                .map(k => String(k || '').trim())
-                .filter(Boolean);
-            return new Set(allowed);
-        }
-
-        if (isSuperAdmin || scopeSyncKeys === 'all' || scopeSyncKeys === 'ALL_CHURCH') {
-            return getConfiguredValidSyncKeys();
-        }
-
-        if (currentSyncKey) {
-            return new Set([currentSyncKey]);
-        }
-    }
-
-    return getConfiguredValidSyncKeys();
+    return allowed;
 }
 
 /**
@@ -81,7 +36,7 @@ export function resolveEffectiveSyncKeys(scopeSyncKeys = null) {
  * @param {Object} options - Optional { exactDate, startDate, endDate, targetSyncKey }
  */
 export function useChurchDataEngine(scopeSyncKeys = null, options = {}) {
-    const weekRange = useMemo(() => getServiceWeekRange(), []);
+    const weekRange = getServiceWeekRange();
 
     // Run automatic safe deduplication & orphan cleanup once on load
     useEffect(() => {

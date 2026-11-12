@@ -1,3 +1,5 @@
+import { scopedSyncKeys } from '../db/childSync';
+import ScopedSyncButton from '../components/ScopedSyncButton';
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
@@ -41,7 +43,7 @@ export default function Home() {
     const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
 
     // 🌟 تحديد صلاحيات الخادم (ماستر أو كاهن أو أمين خدمة أو أدمن مساعد)
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    const isMaster = scopedSyncKeys().length > 1 || currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
     const isLeadership = isMaster || currentServant.role === 'كاهن' || currentServant.role === 'أمين أسرة' || currentServant.role === 'أدمن مساعد' || currentServant.role === 'أمين مرحلة';
 
     // 🌟 جلب إعدادات الكنيسة والخدمة
@@ -309,7 +311,7 @@ export default function Home() {
                     list = list.filter(osra => allowed.includes(osra.syncKey));
                 }
                 
-                return list;
+                return list.filter(osra => scopedSyncKeys().includes(osra.syncKey));
             } catch (e) { return []; }
         }
         return [];
@@ -401,6 +403,7 @@ export default function Home() {
                             {/* Left side (RTL): Notifications, Profile & Settings circular buttons */}
                             <div className="flex items-center gap-2 shrink-0">
                                 <ScopedNotificationCenter variant="light" />
+                            <ScopedSyncButton />
                                 <Link 
                                     to="/servant-profile" 
                                     aria-label="الملف الشخصي" 

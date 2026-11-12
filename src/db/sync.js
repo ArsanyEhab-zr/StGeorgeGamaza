@@ -1,3 +1,5 @@
+import { syncScopedClassesFromCloud, scopedSyncKeys, deleteChildEverywhere } from './childSync';
+export { syncScopedClassesFromCloud, deleteChildEverywhere, restoreChildEverywhere } from './childSync';
 import { db } from './database';
 import { firestore } from './firebase';
 import { collection, collectionGroup, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
@@ -45,8 +47,6 @@ const _syncDataWithCloud = async () => {
             activitiesAdded: [], activitiesUpdated: []
         };
 
-        let pushedChildrenIds = new Set();
-        let pushedAttendanceIds = new Set();
         let pushedEventsIds = new Set();
         let pushedGradeKeys = new Set();
         let pushedExamIds = new Set();
@@ -123,11 +123,10 @@ const _syncDataWithCloud = async () => {
         // -------------------------------------------------------------
 
         const now = new Date().toISOString();
-        const lastSyncTime = localStorage.getItem('lastSyncTime') || '1970-01-01T00:00:00.000Z';
+        const lastSyncTime = '1970-01-01T00:00:00.000Z';
+        const scopedResult = await syncScopedClassesFromCloud(scopedSyncKeys());
 
         // 🌟 3. السحب أولاً (Pull) من السحابة 🌟
-        let cloudChildren = [];
-        let cloudAttendance = [];
         let cloudEvents = [];
         let cloudActivities = [];
 
@@ -137,11 +136,6 @@ const _syncDataWithCloud = async () => {
         };
 
         if (isAdmin) {
-            const childrenSnapshot = await getDocs(collectionGroup(firestore, 'children'));
-            cloudChildren = (childrenSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
-
-            const attendanceSnapshot = await getDocs(collectionGroup(firestore, 'attendance'));
-            cloudAttendance = (attendanceSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
             cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
@@ -151,11 +145,6 @@ const _syncDataWithCloud = async () => {
             
         } else if (isStageAdmin) {
             if (allowedClasses.length > 0) {
-                const childrenSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'children'))));
-                cloudChildren = childrenSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
-
-                const attendanceSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'attendance'))));
-                cloudAttendance = attendanceSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
 
                 const eventsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'events'))));
                 const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
@@ -168,11 +157,6 @@ const _syncDataWithCloud = async () => {
                 cloudActivities = activitiesSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
             }
         } else {
-            const childrenSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'children'));
-            cloudChildren = (childrenSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
-
-            const attendanceSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'attendance'));
-            cloudAttendance = (attendanceSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
 
             const eventsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'events'));
             const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
@@ -187,72 +171,13 @@ const _syncDataWithCloud = async () => {
         }
 
         // تحويل داتا الكلاود لخرائط (Maps) عشان المقارنة تبقى بسرعة الصاروخ
-        const cloudChildrenMap = new Map(cloudChildren.map(c => [c.id, c]));
-        const cloudAttendanceMap = new Map(cloudAttendance.map(a => [`${a.date}_${a.childId}_${a.type}`, a]));
         const cloudEventsMap = new Map(cloudEvents.map(e => [e.id, e]));
 
         // 4. هنجيب الداتا من الموبايل (أوفلاين)
-        const localChildren = (await db.children.toArray()) || [];
-        const localAttendance = (await db.attendance.toArray()) || [];
         const localEvents = (await db.events.toArray()) || [];
         const localActivities = (await db.activities.toArray()) || [];
 
         // 🚀🚀 5. الرفع للسحابة (Push) "بنظام isDirty" — نرفع الـ dirty بس 🚀🚀
-        try { for (const child of localChildren) {
-            if (!child.isDirty) continue; // ✨ Skip clean records
-            
-            let targetKey = (isAdmin || isStageAdmin) ? (child.syncKey || currentSyncKey) : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') {
-                if (child.syncKey && child.syncKey !== 'MASTER_ACCESS' && child.syncKey !== 'ADMIN_MODE' && child.syncKey !== 'STAGE_ADMIN') {
-                    targetKey = child.syncKey;
-                } else {
-                    continue;
-                }
-            }
-
-            const docRef = doc(firestore, 'Osras', targetKey, 'children', child.id.toString());
-
-            // 🪦 Tombstone handling: if record is soft-deleted, delete from cloud then purge locally
-            if (child.isDeleted) {
-                try { await deleteDoc(docRef); } catch (_e) { /* ignore if not found */ }
-                await db.children.delete(child.id);
-                pushLog.children.push(`🗑️${(child.name || '').split(' ')[0]}`);
-                pushedChildrenIds.add(child.id);
-                continue;
-            }
-
-            const encryptedPayload = encryptData(cleanData({ ...child, syncKey: targetKey, isDirty: false, isDeleted: false }));
-            await setDoc(docRef, { payload: encryptedPayload }, { merge: true });
-            await db.children.update(child.id, { isDirty: false, updatedAt: now });
-            pushLog.children.push(child.name.split(' ')[0]); 
-            pushedChildrenIds.add(child.id);
-        } } catch(e) { console.error('Error syncing children push:', e); }
-
-        try { for (const record of localAttendance) {
-            if (!record.isDirty) continue; // ✨ Skip clean records
-
-            const targetKey = (isAdmin || isStageAdmin) ? record.syncKey : currentSyncKey;
-            if (!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') continue;
-
-            const docId = `${record.date}_${record.childId}_${record.type}`;
-            const docRef = doc(firestore, 'Osras', targetKey, 'attendance', docId);
-
-            // 🪦 Tombstone: soft-deleted attendance
-            if (record.isDeleted) {
-                try { await deleteDoc(docRef); } catch (_e) { /* ignore */ }
-                await db.attendance.delete(record.id);
-                pushLog.attendance.push(`🗑️${record.date}`);
-                pushedAttendanceIds.add(docId);
-                continue;
-            }
-
-            const encryptedPayload = encryptData(cleanData({ ...record, syncKey: targetKey, isDirty: false, isDeleted: false }));
-            await setDoc(docRef, { payload: encryptedPayload }, { merge: true });
-            await db.attendance.update(record.id, { isDirty: false, updatedAt: now });
-            pushLog.attendance.push(record.date); 
-            pushedAttendanceIds.add(docId);
-        } } catch(e) { console.error('Error syncing attendance push:', e); }
-
         try { for (const event of localEvents) {
             if (!event.isDirty) continue; // ✨ Skip clean records
 
@@ -376,60 +301,7 @@ const _syncDataWithCloud = async () => {
         } } catch(e) { console.error('Error syncing grades push:', e); }
 
         // 🌟🌟 6. تحديث داتا الموبايل (Pull) "بنظام updatedAt delta" 🌟🌟
-        const localChildrenMap = new Map(localChildren.map(c => [c.id, c]));
-        
-        try { for (const cloudChild of cloudChildren) {
-            if (pushedChildrenIds.has(cloudChild.id)) continue; // Skip records we just pushed
-            
-            // 🪦 If cloud record has tombstone (isDeleted: true), purge locally
-            if (cloudChild.isDeleted) {
-                await db.children.delete(cloudChild.id);
-                continue;
-            }
-
-            const localMatch = localChildrenMap.get(cloudChild.id);
-            const syncKeyToSave = (isAdmin || isStageAdmin) ? (cloudChild.syncKey || currentSyncKey) : currentSyncKey;
-            const childToSave = { ...cloudChild, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cloudChild.updatedAt || now };
-
-            if (!localMatch) {
-                pullLog.childrenAdded.push(cloudChild.name.split(' ')[0]);
-                await db.children.put(childToSave); 
-            } else {
-                // Pull only if cloud record is newer than our lastSyncTime (timestamp-delta)
-                const cloudUpdated = cloudChild.updatedAt || '1970-01-01T00:00:00.000Z';
-                if (cloudUpdated > lastSyncTime && !localMatch.isDirty) {
-                    pullLog.childrenUpdated.push(cloudChild.name.split(' ')[0]);
-                    await db.children.put(childToSave); 
-                }
-            }
-        } } catch(e) { console.error('Error syncing children pull:', e); }
-
-        // 🪦 6a. حذف المخدومين المحذوفين على السحابة من قاعدة البيانات المحلية (Dexie)
-        const syncedSyncKeys = isAdmin ? null : (isStageAdmin ? new Set(allowedClasses.map(String)) : new Set([String(currentSyncKey)]));
-        try {
-            const cloudChildrenIdSet = new Set(cloudChildren.map(c => String(c.id)));
-
-            for (const localChild of localChildren) {
-                if (pushedChildrenIds.has(localChild.id)) continue;
-                if (localChild.isDirty) continue; // Don't purge unpushed offline creations
-
-                const belongsToSyncedScope = isAdmin || (localChild.syncKey && syncedSyncKeys.has(String(localChild.syncKey)));
-                if (!belongsToSyncedScope) continue;
-
-                const childIdStr = String(localChild.id);
-                if (!cloudChildrenIdSet.has(childIdStr)) {
-                    console.log(`🗑️ [Sync Pull] Pruning remotely deleted child locally: ${localChild.name} (${localChild.id})`);
-                    await db.children.delete(localChild.id);
-                    const numId = Number(localChild.id);
-                    if (!isNaN(numId)) {
-                        await db.children.delete(numId);
-                    }
-                }
-            }
-        } catch (e) {
-            console.error('Error reconciling deleted children during pull:', e);
-        }
-
+        const syncedSyncKeys = new Set(scopedSyncKeys());
         const localEventsMap = new Map(localEvents.map(e => [e.id, e]));
         try { for (const cloudEvent of cloudEvents) {
             if (pushedEventsIds.has(cloudEvent.id)) continue;
@@ -467,55 +339,6 @@ const _syncDataWithCloud = async () => {
             }
         } catch (e) {
             console.error('Error reconciling deleted events during pull:', e);
-        }
-
-        const localAttendanceMap = new Map(localAttendance.map(a => [`${a.date}_${a.childId}_${a.type}`, a]));
-        try { for (const cAtt of cloudAttendance) {
-            const docId = `${cAtt.date}_${cAtt.childId}_${cAtt.type}`;
-            if (pushedAttendanceIds.has(docId)) continue;
-            
-            const localMatch = localAttendanceMap.get(docId);
-            const { id: _id, ...dataToSave } = cAtt;
-            const syncKeyToSave = (isAdmin || isStageAdmin) ? (dataToSave.syncKey || currentSyncKey) : currentSyncKey;
-
-            if (!localMatch) {
-                await db.attendance.put({ ...dataToSave, syncKey: String(syncKeyToSave), isDirty: false, isDeleted: false, updatedAt: cAtt.updatedAt || now });
-                
-                const childInfo = await db.children.get(cAtt.childId);
-                const kidName = childInfo ? childInfo.name.split(' ')[0] : 'مخدوم';
-                pullLog.attendanceAdded.push(`${kidName}(${cAtt.date.slice(5)})`);
-            } else {
-                const cloudUpdated = cAtt.updatedAt || '1970-01-01T00:00:00.000Z';
-                if (cloudUpdated > lastSyncTime && !localMatch.isDirty) {
-                    await db.attendance.put({
-                        ...dataToSave,
-                        id: localMatch.id, // 🛡️ Preserve existing local primary key to prevent duplicate records
-                        syncKey: String(syncKeyToSave),
-                        isDirty: false,
-                        isDeleted: false,
-                        updatedAt: cAtt.updatedAt || now
-                    });
-                }
-            }
-        } } catch(e) { console.error('Error syncing attendance pull:', e); }
-
-        // 🪦 6a-3. حذف سجلات الحضور المحذوفة سحابياً من Dexie
-        try {
-            const cloudAttendanceKeySet = new Set(cloudAttendance.map(a => `${a.date}_${a.childId}_${a.type}`));
-            for (const localAtt of localAttendance) {
-                const attKey = `${localAtt.date}_${localAtt.childId}_${localAtt.type}`;
-                if (pushedAttendanceIds.has(attKey)) continue;
-                if (localAtt.isDirty) continue; // Skip unpushed offline attendance
-
-                const belongs = isAdmin || (localAtt.syncKey && syncedSyncKeys.has(String(localAtt.syncKey)));
-                if (!belongs) continue;
-
-                if (!cloudAttendanceKeySet.has(attKey)) {
-                    await db.attendance.delete(localAtt.id);
-                }
-            }
-        } catch (e) {
-            console.error('Error reconciling deleted attendance during pull:', e);
         }
 
         const localActivitiesMap = new Map(localActivities.map(a => [a.id, a]));
@@ -687,7 +510,7 @@ const _syncDataWithCloud = async () => {
         }
 
         // 🕐 تحديث آخر وقت مزامنة
-        localStorage.setItem('lastSyncTime', now);
+        // Class checkpoints are committed by syncScopedClassesFromCloud only after success.
 
         // 🌟 7. بناء رسالة التقرير المفصلة والنهائية
         let finalMessage = isAdmin
@@ -728,53 +551,23 @@ const _syncDataWithCloud = async () => {
             finalMessage = "✅ المزامنة تمت، جميع البيانات محدثة بالفعل (لا يوجد جديد للرفع أو السحب).";
         }
 
-        return { success: true, message: finalMessage };
+        return { success: true, message: `تم تحديث الأطفال والحضور في ${scopedResult.classCount} فصل.\n${finalMessage}` };
     } catch (error) {
         console.error("Sync Error: ", error);
         return { success: false, message: `حصلت مشكلة: ${error.message}` };
     }
 };
 
-export const syncDataWithCloud = async (retryCount = 0) => {
-    // 1. Immediate hardware check Before starting
-    if (!navigator.onLine) {
-        return { success: false, message: "⚠️ لا يوجد اتصال بالإنترنت. يرجى المحاولة لاحقاً." };
-    }
-
-    if (retryCount === 0) {
-        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
-    }
-
-    try {
-        // We race the entire Sync process against a hard 60-second timeout
-        const syncTask = _syncDataWithCloud();
-
-        const timeoutTask = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("NETWORK_TIMEOUT")), 60000)
-        );
-
-        const result = await Promise.race([syncTask, timeoutTask]);
-        
-        if (result.success) {
-            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'success', time: Date.now() } }));
-        } else {
-            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
-        }
-        
+let activeSync = null;
+export const syncDataWithCloud = () => {
+    if (activeSync) return activeSync;
+    if (!navigator.onLine) return Promise.resolve({ success: false, message: 'لا يوجد اتصال بالإنترنت' });
+    window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
+    activeSync = _syncDataWithCloud().then(result => {
+        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: result?.success ? 'success' : 'error', time: Date.now() } }));
         return result;
-
-    } catch (error) {
-        if (error.message === "NETWORK_TIMEOUT") {
-            if (retryCount < 1) {
-                console.log("⏱️ Sync timeout. Retrying gracefully...");
-                return await syncDataWithCloud(retryCount + 1);
-            }
-            window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
-            return { success: false, message: "⏱️ انتهت مهلة الاتصال بالإنترنت أثناء الرفع. الرجاء التأكد من استقرار الشبكة." };
-        }
-        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'error' } }));
-        return { success: false, message: `حصلت مشكلة: ${error.message}` };
-    }
+    }).finally(() => { activeSync = null; });
+    return activeSync;
 };
 
 /**
@@ -785,87 +578,6 @@ export const syncDataWithCloud = async (retryCount = 0) => {
  * @param {object} [cachedChildData] - Optional cached child object.
  * @returns {Promise<{ success: boolean, message: string }>}
  */
-export const deleteChildRecord = async (childId, cachedChildData = null) => {
-    try {
-        const idStr = String(childId);
-        const now = new Date().toISOString();
-        const currentSyncKey = localStorage.getItem('currentSyncKey');
-        const child = cachedChildData || await db.children.get(childId) || await db.children.get(idStr);
-        const childName = child?.name || idStr;
-        let targetKey = child?.syncKey || (currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE' && currentSyncKey !== 'STAGE_ADMIN' ? currentSyncKey : null);
-        if ((!targetKey || targetKey === 'MASTER_ACCESS' || targetKey === 'ADMIN_MODE' || targetKey === 'STAGE_ADMIN') && child?.syncKey) {
-            targetKey = child.syncKey;
-        }
-
-        // 1. Soft-delete in Dexie immediately so UI updates instantly via useLiveQuery
-        try {
-            await db.children.update(childId, { isDeleted: true, isDirty: true, updatedAt: now });
-        } catch (_err) {
-            try { await db.children.update(idStr, { isDeleted: true, isDirty: true, updatedAt: now }); } catch (_e) {}
-        }
-
-        // 2. Also soft-delete attendance & grades records for this child
-        try {
-            const atts1 = await db.attendance.where('childId').equals(childId).toArray();
-            for (const a of atts1) {
-                await db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now });
-            }
-            if (childId !== idStr) {
-                const atts2 = await db.attendance.where('childId').equals(idStr).toArray();
-                for (const a of atts2) {
-                    await db.attendance.update(a.id, { isDeleted: true, isDirty: true, updatedAt: now });
-                }
-            }
-        } catch (_attErr) {
-            console.warn('Error soft-deleting attendance for child:', _attErr);
-        }
-
-        try {
-            await db.grades.where('childId').equals(childId).modify({ isDeleted: true, isDirty: true, updatedAt: now });
-            if (childId !== idStr) {
-                await db.grades.where('childId').equals(idStr).modify({ isDeleted: true, isDirty: true, updatedAt: now });
-            }
-        } catch (_gradeErr) {
-            console.warn('Error soft-deleting grades for child:', _gradeErr);
-        }
-
-        // 3. Log audit activity in Master Activity Logs
-        await logActivity('DELETE_CHILD', `حذف المخدوم: ${childName} (كود: ${idStr})`);
-
-        // 4. Direct Firestore deletion if online
-        let remoteDeleted = false;
-        if (navigator.onLine && targetKey && targetKey !== 'MASTER_ACCESS' && targetKey !== 'ADMIN_MODE' && targetKey !== 'STAGE_ADMIN') {
-            try {
-                const docRef = doc(firestore, 'Osras', targetKey, 'children', idStr);
-                await deleteDoc(docRef);
-                remoteDeleted = true;
-                console.log(`✅ [ChildSync] Direct Firebase deleteDoc succeeded for child: ${idStr}`);
-            } catch (err) {
-                console.warn('Direct Firebase deleteDoc failed, sync pipeline will retry:', err);
-            }
-        }
-
-        // 5. If remotely deleted successfully, purge locally from Dexie immediately
-        if (remoteDeleted) {
-            await db.children.delete(childId);
-            if (childId !== idStr) await db.children.delete(idStr);
-            try {
-                await db.attendance.where('childId').equals(childId).delete();
-                if (childId !== idStr) await db.attendance.where('childId').equals(idStr).delete();
-                await db.grades.where('childId').equals(childId).delete();
-                if (childId !== idStr) await db.grades.where('childId').equals(idStr).delete();
-            } catch (_e) {}
-        }
-
-        // 6. Broadcast global sync event
-        window.dispatchEvent(new CustomEvent('global-sync-status', { detail: { status: 'syncing' } }));
-        setTimeout(() => {
-            syncDataWithCloud().catch(() => {});
-        }, 300);
-
-        return { success: true, message: `تم مسح المخدوم (${childName}) بنجاح.` };
-    } catch (error) {
-        console.error('Failed to delete child record:', error);
-        return { success: false, message: error.message };
-    }
-};
+export const deleteChildRecord = (id, cachedChild = null) => deleteChildEverywhere(
+    cachedChild || id, JSON.parse(localStorage.getItem('currentServant') || '{}').name || 'خادم'
+);

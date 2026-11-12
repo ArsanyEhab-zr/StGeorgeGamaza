@@ -1,3 +1,5 @@
+import { getCanonicalActiveChildren } from '../utils/churchDataEngine';
+import { scopedSyncKeys } from '../db/childSync';
 /* eslint-disable no-unused-vars */
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { db } from '../db/database';
@@ -102,13 +104,13 @@ export default function useQrScanner() {
     // ─── Resolve child name from Dexie ───
     const resolveChildName = useCallback(async (childId) => {
         try {
-            const child = await db.children.get(childId);
+            const child = getCanonicalActiveChildren(await db.children.toArray(), scopedSyncKeys()).childMapById.get(String(childId));
             if (child && !child.isDeleted) {
                 return { name: child.name || 'بدون اسم', gender: child.gender || '' };
             }
-            return { name: `ID: ${childId} (غير موجود)`, gender: '' };
+            return null;
         } catch (_e) {
-            return { name: `ID: ${childId}`, gender: '' };
+            return null;
         }
     }, []);
 
@@ -141,7 +143,9 @@ export default function useQrScanner() {
         }
 
         // ✅ New successful scan — resolve name from Dexie
-        const { name, gender } = await resolveChildName(childId);
+        const resolved = await resolveChildName(childId);
+        if (!resolved) { showToast('المخدوم محذوف أو خارج النطاق أو لم تكتمل المزامنة', 'error'); return; }
+        const { name, gender } = resolved;
         scannedIdsRef.current.add(childId);
         setScannedList(prev => [{ childId, raw: parsed.raw, name, gender, timestamp: now }, ...prev]);
         triggerFlash('green');

@@ -168,7 +168,7 @@ export const getServiceWeekRange = (refDate = new Date()) => {
 
 /**
  * Smart Default Service Date Resolver for a given class:
- * - If today is Thursday (now.getDay() === 4), returns today's Thursday date (YYYY-MM-DD).
+ * - Always follows the configured class day, including when a new cycle starts on Thursday.
  * - If the class is a Thursday service class (isThursdayServiceClass), returns the Thursday of the current service week (startDate).
  * - Otherwise (Friday service class on Friday through Wednesday), returns the Friday of the current service week (startDate + 1 day).
  */
@@ -176,11 +176,6 @@ export const getDefaultServiceDateForClass = (syncKey = '', className = '', now 
     const d = (now instanceof Date) ? new Date(now.getTime()) : new Date(now);
     const validNow = isNaN(d.getTime()) ? new Date() : d;
     const { startDate, fridayDate } = getServiceWeekRange(validNow);
-
-    // 1. If today is Thursday, always default to today's Thursday date
-    if (validNow.getDay() === 4) {
-        return getLocalDateString(validNow);
-    }
 
     // 2. If this class is a Thursday service class, default to the Thursday of the active week
     if (isThursdayServiceClass(syncKey, className)) {
