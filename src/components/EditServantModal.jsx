@@ -250,11 +250,11 @@ export default function EditServantModal({ isOpen, servant, services: initialSer
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
-            <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
+            <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh]">
                 
                 {/* Header */}
-                <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-5 flex items-center justify-between border-b border-slate-800">
+                <div className="shrink-0 bg-gradient-to-r from-slate-900 to-indigo-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-slate-800">
                     <div className="flex items-center gap-2.5">
                         <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
                             <User size={20} />
@@ -273,7 +273,7 @@ export default function EditServantModal({ isOpen, servant, services: initialSer
                 </div>
 
                 {/* Form */}
-                <form onSubmit={handleSave} className="p-6 overflow-y-auto space-y-4">
+                <form onSubmit={handleSave} className="flex-1 p-4 sm:p-6 overflow-y-auto overscroll-contain space-y-4">
                     {errorMsg && (
                         <div className="bg-rose-50 text-rose-700 p-3 rounded-xl text-xs font-bold border border-rose-200 animate-in shake duration-300">
                             {errorMsg}

@@ -371,31 +371,48 @@ export default function Attendance() {
                     </div>
 
                     {/* Date Picker UI Wrapper */}
-                    <div className="flex flex-wrap items-center gap-2 mb-4 bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-                        <Calendar className="text-blue-500 w-5 h-5 mr-2 shrink-0" />
-                        <input
-                            type="date"
-                            value={selectedDate}
-                            onChange={handleDateChange}
-                            className="flex-1 min-w-[140px] bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-xl outline-none border border-slate-200 focus:border-blue-400 focus:bg-white transition-all text-sm"
-                        />
-                        {selectedDate !== targetDate && (
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-4 bg-white p-2.5 rounded-2xl shadow-sm border border-slate-100">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <Calendar className="text-blue-500 w-5 h-5 mr-1 shrink-0" />
+                            <input
+                                type="date"
+                                value={selectedDate}
+                                onChange={handleDateChange}
+                                className="flex-1 min-w-0 w-full bg-slate-50 text-slate-700 font-bold py-2 px-3 rounded-xl outline-none border border-slate-200 focus:border-blue-400 focus:bg-white transition-all text-sm"
+                            />
+                        </div>
+                        <div className={`grid gap-2 shrink-0 ${selectedDate !== targetDate ? 'grid-cols-2' : 'grid-cols-1'} sm:flex`}>
+                            {selectedDate !== targetDate && (
+                                <button
+                                    onClick={handleResetToCurrentWeek}
+                                    className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-xl text-xs font-black hover:bg-emerald-100 transition-all border border-emerald-200"
+                                >
+                                    أسبوع الخدمة الحالي
+                                </button>
+                            )}
                             <button
-                                onClick={handleResetToCurrentWeek}
-                                className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-xl text-xs font-black hover:bg-emerald-100 transition-all shrink-0 border border-emerald-200"
+                                onClick={handlePreviousWeek}
+                                className="bg-blue-50 text-blue-600 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-blue-100 transition-all border border-blue-100"
                             >
-                                أسبوع الخدمة الحالي
+                                الأسبوع الماضي
                             </button>
-                        )}
-                        <button
-                            onClick={handlePreviousWeek}
-                            className="bg-blue-50 text-blue-600 px-3.5 py-2 rounded-xl text-xs font-black hover:bg-blue-100 transition-all shrink-0 border border-blue-100"
-                        >
-                            الأسبوع الماضي
-                        </button>
+                        </div>
                     </div>
 
-                    <p className="mb-3 text-center font-bold" role="status">الحضور: {validatedAttendance.presentCount} من {canonicalChildren.length} — الغياب: {canonicalChildren.length - validatedAttendance.presentCount}</p>
+                    <div className="grid grid-cols-3 gap-2 text-center mb-3" role="status">
+                        <div className="bg-white border border-slate-200 rounded-xl py-2 px-1">
+                            <div className="text-xs sm:text-sm font-black text-slate-800">{canonicalChildren.length}</div>
+                            <div className="text-[10px] font-bold text-slate-500">الإجمالي</div>
+                        </div>
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl py-2 px-1">
+                            <div className="text-xs sm:text-sm font-black text-emerald-700">{validatedAttendance.presentCount}</div>
+                            <div className="text-[10px] font-bold text-emerald-700">الحضور</div>
+                        </div>
+                        <div className="bg-rose-50 border border-rose-200 rounded-xl py-2 px-1">
+                            <div className="text-xs sm:text-sm font-black text-rose-700">{Math.max(0, canonicalChildren.length - validatedAttendance.presentCount)}</div>
+                            <div className="text-[10px] font-bold text-rose-700">الغياب</div>
+                        </div>
+                    </div>
                     <div className="relative mb-4">
                         <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
@@ -455,11 +472,11 @@ export default function Attendance() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-4">
                     {filteredChildren.map(child => (
-                        <div key={child.id} className="bg-white rounded-3xl p-4 shadow-sm border border-slate-100 flex flex-col gap-4 hover:shadow-md transition-shadow">
-                            <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-xl overflow-hidden ring-2 ring-slate-50">
+                        <div key={child.id} className="bg-white rounded-3xl p-3.5 sm:p-4 shadow-sm border border-slate-100 flex flex-col gap-3 hover:shadow-md transition-shadow">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-100 flex items-center justify-center text-xl overflow-hidden ring-2 ring-slate-50 shrink-0">
                                     {child.profilePic ? (
                                         <img
                                             src={child.profilePic}
@@ -469,8 +486,8 @@ export default function Attendance() {
                                         />
                                     ) : (child.gender === 'بنت' ? '👧' : '👦')}
                                 </div>
-                                <div>
-                                    <h3 className="font-black text-slate-800 text-sm">{child.name || 'بدون اسم'}</h3>
+                                <div className="min-w-0 flex-1">
+                                    <h3 className="font-black text-slate-800 text-sm leading-snug line-clamp-2">{child.name || 'بدون اسم'}</h3>
                                     <p className={`text-[10px] px-2 py-0.5 rounded mt-1 w-fit font-bold ${child.streak > 0 ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>الاستريك: {child.streak || 0}</p>
                                 </div>
                             </div>
@@ -490,20 +507,20 @@ export default function Attendance() {
             </main>
 
             {modalState.isOpen && (
-                <div className="fixed inset-0 z-100 flex items-end md:items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white w-full max-w-md rounded-4xl p-6 shadow-2xl animate-in slide-in-from-bottom-8">
+                <div className="fixed inset-0 z-100 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-4xl max-h-[88vh] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom-8">
 
-                        <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                            <h2 className={`text-lg font-black flex items-center gap-2 
+                        <div className="shrink-0 flex justify-between items-center p-4 sm:p-5 border-b border-slate-100">
+                            <h2 className={`text-base sm:text-lg font-black flex items-center gap-2 min-w-0 truncate
                                 ${modalState.type === 'absent' ? 'text-red-600' : modalState.type === 'service' ? 'text-green-600' : 'text-yellow-600'}`}>
-                                {modalState.type === 'absent' && <><UserMinus size={20} /> تقرير غياب ({reportBoys.length + reportGirls.length})</>}
-                                {modalState.type === 'service' && <><BookOpen size={20} /> تقرير حضور الخدمة ({reportBoys.length + reportGirls.length})</>}
-                                {modalState.type === 'liturgy' && <><Church size={20} /> تقرير حضور القداس ({reportBoys.length + reportGirls.length})</>}
+                                {modalState.type === 'absent' && <><UserMinus size={20} className="shrink-0" /> <span className="truncate">تقرير غياب ({reportBoys.length + reportGirls.length})</span></>}
+                                {modalState.type === 'service' && <><BookOpen size={20} className="shrink-0" /> <span className="truncate">تقرير حضور الخدمة ({reportBoys.length + reportGirls.length})</span></>}
+                                {modalState.type === 'liturgy' && <><Church size={20} className="shrink-0" /> <span className="truncate">تقرير حضور القداس ({reportBoys.length + reportGirls.length})</span></>}
                             </h2>
-                            <button onClick={() => setModalState({ isOpen: false, type: null })} aria-label="إغلاق" className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"><X size={16} /></button>
+                            <button onClick={() => setModalState({ isOpen: false, type: null })} aria-label="إغلاق" className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors shrink-0"><X size={16} /></button>
                         </div>
 
-                        <div className="max-h-[60vh] overflow-y-auto pr-1">
+                        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
                             {reportBoys.length > 0 && (
                                 <div className="mb-6">
                                     <h3 className="bg-blue-50 text-blue-700 font-black text-xs py-2 px-3 rounded-lg mb-3 inline-flex items-center gap-1">

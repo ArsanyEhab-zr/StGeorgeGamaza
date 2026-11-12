@@ -343,9 +343,9 @@ export default function Home() {
                 <div className="absolute bottom-10 -left-20 w-100 h-100 rounded-full bg-amber-500/5 blur-[80px]" />
             </div>
 
-            <main className="relative z-10 max-w-4xl mx-auto px-4 pt-11 sm:pt-6">
+            <main className="relative z-10 max-w-4xl mx-auto px-3.5 sm:px-4 pt-4 sm:pt-6">
 
-                <header className="bg-white/90 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] shadow-sm border border-slate-200/90 p-4 sm:p-6 mb-6">
+                <header className="bg-white/90 backdrop-blur-md rounded-3xl sm:rounded-[2.5rem] shadow-sm border border-slate-200/90 p-4 sm:p-6 mb-4 sm:mb-6">
                     <div className="flex flex-col gap-3">
                         {/* Row 1 (Top Bar - Avatar, Role Pill & Action Icons) */}
                         <div className="flex items-center justify-between gap-2 w-full">
@@ -403,7 +403,6 @@ export default function Home() {
                             {/* Left side (RTL): Notifications, Profile & Settings circular buttons */}
                             <div className="flex items-center gap-2 shrink-0">
                                 <ScopedNotificationCenter variant="light" />
-                            <ScopedSyncButton />
                                 <Link 
                                     to="/servant-profile" 
                                     aria-label="الملف الشخصي" 
@@ -499,7 +498,9 @@ export default function Home() {
                     </div>
                 </header>
 
-
+                <div className="mb-5">
+                    <ScopedSyncButton />
+                </div>
 
                 {/* 🌟 Smart Alerts (Phase 6) */}
                 <SmartAlerts />
@@ -545,9 +546,9 @@ export default function Home() {
                                 const presentCount = Math.min(act.presentCount || 0, totalKids);
                                 const isThu = isThursdayServiceClass(osra.syncKey, osra.name);
                                 return (
-                                    <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.02] transition-transform">
+                                    <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-4 sm:p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.01] transition-transform">
                                         <div className="flex items-center justify-between gap-3 mb-3">
-                                            <div className="flex items-center gap-4 min-w-0">
+                                            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
                                                 {osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO ? (
                                                     <img 
                                                         src={osra.logo || TENANT_CONFIG.DEFAULT_OSRA_LOGO} 
@@ -711,20 +712,20 @@ export default function Home() {
                     <div className="mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <button
                             onClick={() => navigate('/info-directory')}
-                            className="w-full bg-indigo-900 hover:bg-indigo-950 p-6 rounded-[2.5rem] shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-between group border border-indigo-800 text-right cursor-pointer"
+                            className="w-full bg-indigo-900 hover:bg-indigo-950 p-4 sm:p-6 rounded-3xl sm:rounded-[2.5rem] shadow-md hover:shadow-lg transition-all duration-300 flex items-center justify-between gap-3 group border border-indigo-800 text-right cursor-pointer"
                         >
-                            <div className="flex items-center gap-4">
-                                <div className="w-14 h-14 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center group-hover:scale-105 transition-all">
-                                    <BookOpen size={28} />
+                            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-all">
+                                    <BookOpen size={24} className="sm:w-7 sm:h-7" />
                                 </div>
-                                <div>
-                                    <h2 className="text-lg font-black text-white">دليل المخدومين</h2>
-                                    <p className="text-xs text-indigo-200 mt-1 font-bold">
+                                <div className="min-w-0 flex-1">
+                                    <h2 className="text-base sm:text-lg font-black text-white truncate">دليل المخدومين</h2>
+                                    <p className="text-xs text-indigo-200 mt-1 font-bold leading-snug">
                                         عرض وتعديل بيانات المخدومين، المجموعات، والملفات الشخصية بالكامل
                                     </p>
                                 </div>
                             </div>
-                            <div className="w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center group-hover:translate-x-[-4px] transition-all">
+                            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0 group-hover:translate-x-[-4px] transition-all">
                                 <ChevronRight size={20} className="rotate-180" />
                             </div>
                         </button>

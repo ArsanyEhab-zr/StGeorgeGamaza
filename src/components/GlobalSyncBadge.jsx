@@ -1,33 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import useNetworkStatus from '../hooks/useNetworkStatus';
+import useSyncStatus from '../hooks/useSyncStatus';
 
 export default function GlobalSyncBadge() {
     const { isOnline } = useNetworkStatus();
+    const { dirtyCount } = useSyncStatus();
     const [syncState, setSyncState] = useState({
         status: 'idle', // 'idle' | 'syncing' | 'success' | 'error'
         lastSyncedAt: null,
     });
 
     useEffect(() => {
+        let hideTimer = null;
         const handleSyncEvent = (e) => {
-            const detail = e.detail;
-            setSyncState(prev => {
-                const newState = { ...prev, status: detail.status };
-                if (detail.time) {
-                    newState.lastSyncedAt = detail.time;
-                }
-                return newState;
-            });
+            const detail = e.detail || {};
+            setSyncState(prev => ({
+                ...prev,
+                status: detail.status || 'idle',
+                lastSyncedAt: detail.time || prev.lastSyncedAt,
+            }));
 
+            if (hideTimer) clearTimeout(hideTimer);
             if (detail.status === 'success' || detail.status === 'error') {
-                setTimeout(() => {
+                hideTimer = setTimeout(() => {
                     setSyncState(prev => ({ ...prev, status: 'idle' }));
                 }, 3000);
             }
         };
 
         window.addEventListener('global-sync-status', handleSyncEvent);
-        
+
         const handleManualTrigger = async () => {
             const { syncDataWithCloud } = await import('../db/sync.js');
             syncDataWithCloud();
@@ -35,90 +37,100 @@ export default function GlobalSyncBadge() {
         window.addEventListener('trigger-manual-sync', handleManualTrigger);
 
         return () => {
+            if (hideTimer) clearTimeout(hideTimer);
             window.removeEventListener('global-sync-status', handleSyncEvent);
             window.removeEventListener('trigger-manual-sync', handleManualTrigger);
         };
     }, []);
 
-    // 🌟 If offline
+    const basePositionClass =
+        'fixed bottom-4 left-4 z-[90] no-print flex items-center gap-2 px-3 py-1.5 rounded-full backdrop-blur-md shadow-lg select-none transition-all duration-300 pointer-events-auto max-w-[calc(100vw-2rem)]';
+
+    // 1. Offline
     if (!isOnline) {
         return (
-            <div 
-                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 backdrop-blur-md border border-slate-700/50 shadow-lg select-none transition-all duration-300 pointer-events-auto"
+            <div
+                className={`${basePositionClass} bg-slate-900/85 border border-slate-700/70`}
                 dir="rtl"
+                title="لا يوجد اتصال بالإنترنت — التعديلات محفوظة محلياً"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
                     <span className="relative inline-flex rounded-full h-full w-full bg-red-500"></span>
                 </span>
-                <span className="hidden sm:inline text-[10px] sm:text-xs font-black text-slate-200">أوفلاين</span>
-            </div>
-        );
-    }
-
-    // 🌟 If idle
-    if (syncState.status === 'idle') {
-        return (
-            <div 
-                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/60 backdrop-blur-md border border-slate-200 shadow-sm cursor-pointer select-none transition-all duration-300 opacity-50 hover:opacity-100 pointer-events-auto hover:scale-105"
-                onClick={() => window.dispatchEvent(new CustomEvent('trigger-manual-sync'))}
-                title="اضغط للمزامنة الآن"
-                dir="rtl"
-            >
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
+                <span className="text-[11px] font-black text-slate-100 truncate">
+                    أوفلاين{dirtyCount > 0 ? ` (${dirtyCount})` : ''}
                 </span>
-                <span className="hidden sm:inline text-[10px] sm:text-xs font-black text-slate-500">متصل</span>
             </div>
         );
     }
 
-    // 🌟 If syncing
+    // 2. Actively syncing
     if (syncState.status === 'syncing') {
         return (
-            <div 
-                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-amber-200 shadow-[0_0_15px_rgba(251,191,36,0.2)] select-none transition-all duration-300 pointer-events-auto"
+            <div
+                className={`${basePositionClass} bg-white/95 border border-amber-300 shadow-[0_4px_20px_rgba(251,191,36,0.25)]`}
                 dir="rtl"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-full w-full bg-amber-500 shadow-[0_0_10px_rgba(251,191,36,0.8)]"></span>
+                    <span className="relative inline-flex rounded-full h-full w-full bg-amber-500"></span>
                 </span>
-                <span className="hidden sm:inline text-[10px] sm:text-xs font-black text-amber-600">جاري المزامنة...</span>
+                <span className="text-[11px] font-black text-amber-700">جاري المزامنة...</span>
             </div>
         );
     }
 
-    // 🌟 If success
-    if (syncState.status === 'success') {
-        return (
-            <div 
-                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.2)] select-none transition-all duration-300 pointer-events-auto"
-                dir="rtl"
-            >
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"></span>
-                </span>
-                <span className="hidden sm:inline text-[10px] sm:text-xs font-black text-emerald-600">تم التحديث</span>
-            </div>
-        );
-    }
-
-    // 🌟 If error
+    // 3. Sync error
     if (syncState.status === 'error') {
         return (
-            <div 
-                className="fixed top-2.5 right-3 sm:top-4 sm:right-6 z-[9999] flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/90 backdrop-blur-md border border-rose-200 shadow-[0_0_15px_rgba(244,63,94,0.2)] cursor-pointer select-none transition-all duration-300 hover:scale-105 pointer-events-auto"
+            <button
+                type="button"
+                className={`${basePositionClass} bg-white/95 border border-rose-300 shadow-[0_4px_20px_rgba(244,63,94,0.2)] cursor-pointer hover:scale-105 active:scale-95`}
                 title="تعذر المزامنة - اضغط لإعادة المحاولة"
                 onClick={() => window.dispatchEvent(new CustomEvent('trigger-manual-sync'))}
                 dir="rtl"
             >
                 <span className="relative flex h-2.5 w-2.5 shrink-0">
-                    <span className="relative inline-flex rounded-full h-full w-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]"></span>
+                    <span className="relative inline-flex rounded-full h-full w-full bg-rose-500"></span>
                 </span>
-                <span className="hidden sm:inline text-[10px] sm:text-xs font-black text-rose-600">خطأ مزامنة</span>
+                <span className="text-[11px] font-black text-rose-700">خطأ مزامنة (إعادة)</span>
+            </button>
+        );
+    }
+
+    // 4. Sync just completed (auto-hides after 3s)
+    if (syncState.status === 'success') {
+        return (
+            <div
+                className={`${basePositionClass} bg-white/95 border border-emerald-300 shadow-[0_4px_20px_rgba(16,185,129,0.2)]`}
+                dir="rtl"
+            >
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="relative inline-flex rounded-full h-full w-full bg-emerald-500"></span>
+                </span>
+                <span className="text-[11px] font-black text-emerald-700">تم التحديث</span>
             </div>
         );
     }
 
+    // 5. Pending local changes waiting to sync
+    if (dirtyCount > 0) {
+        return (
+            <button
+                type="button"
+                className={`${basePositionClass} bg-amber-50/95 border border-amber-300 cursor-pointer hover:scale-105 active:scale-95`}
+                onClick={() => window.dispatchEvent(new CustomEvent('trigger-manual-sync'))}
+                title="توجد تعديلات محلية معلقة — اضغط للمزامنة الآن"
+                dir="rtl"
+            >
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="animate-pulse relative inline-flex rounded-full h-full w-full bg-amber-500"></span>
+                </span>
+                <span className="text-[11px] font-black text-amber-800">بانتظار الرفع ({dirtyCount})</span>
+            </button>
+        );
+    }
+
+    // 6. Online, idle, and fully synced: hide automatically so it never crowds the UI
     return null;
 }

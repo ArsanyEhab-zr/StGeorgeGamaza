@@ -236,7 +236,7 @@ export default function Visitation() {
                                                         )}
 
                                                         {/* 📍 زرار الـ GPS */}
-                                                        <div className="bg-slate-50 p-3 rounded-2xl mb-4 border border-slate-100 flex items-center justify-between">
+                                                        <div className="bg-slate-50 p-3 rounded-2xl mb-4 border border-slate-100 flex flex-wrap items-center justify-between gap-2">
                                                             <div>
                                                                 <span className="text-[10px] font-black text-slate-500 block">الموقع (GPS)</span>
                                                                 {child.gpsLink ? (

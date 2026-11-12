@@ -63,13 +63,13 @@ export default function UrgentInterventionModal({ isOpen, onClose, urgentCases =
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200" dir="rtl">
             <div 
-                className="bg-white rounded-3xl sm:rounded-4xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-red-200"
+                className="bg-white rounded-t-3xl sm:rounded-4xl shadow-2xl max-w-2xl w-full max-h-[88vh] flex flex-col overflow-hidden border border-red-200"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 p-5 sm:p-6 text-white relative">
+                <div className="shrink-0 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 p-4 sm:p-6 text-white relative">
                     <button 
                         onClick={onClose}
                         className="absolute left-4 top-4 w-9 h-9 rounded-full bg-black/20 hover:bg-black/30 flex items-center justify-center text-white transition-colors"
@@ -113,7 +113,7 @@ export default function UrgentInterventionModal({ isOpen, onClose, urgentCases =
                 )}
 
                 {/* Cases List */}
-                <div className="p-4 sm:p-6 overflow-y-auto space-y-3.5 flex-1">
+                <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain space-y-3.5 flex-1">
                     {filteredCases.length === 0 ? (
                         <div className="text-center py-12 px-4">
                             <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
@@ -238,7 +238,7 @@ export default function UrgentInterventionModal({ isOpen, onClose, urgentCases =
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-500">
+                <div className="shrink-0 p-3.5 sm:p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500">
                     <span>💡 تسجيل الافتقاد يحل الحالة تلقائياً ويزيلها من قائمة التدخل العاجل.</span>
                     <button 
                         onClick={onClose}

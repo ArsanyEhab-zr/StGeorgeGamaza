@@ -184,7 +184,7 @@ export default function Dashboard() {
                                 <ChevronRight size={24} />
                             </button>
                         )}
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             {appSettings.osraLogo ? (
                                 <img 
                                     src={appSettings.osraLogo} 
@@ -193,17 +193,17 @@ export default function Dashboard() {
                                     loading="eager" 
                                     fetchpriority="high" 
                                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                                    className="w-10 h-10 rounded-full object-cover border-2 border-slate-700" 
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-slate-700 shrink-0" 
                                     alt="لوجو الأسرة" 
                                 />
                             ) : (
-                                <DatabaseBackup className="text-indigo-400" size={24} />
+                                <DatabaseBackup className="text-indigo-400 shrink-0" size={24} />
                             )}
-                            <div>
-                                <h1 className="text-sm font-black text-indigo-300">
+                            <div className="min-w-0 flex-1">
+                                <h1 className="text-sm sm:text-base font-black text-indigo-300 truncate">
                                     {isMaster ? 'لوحة الإدارة المركزية' : dynamicTitle}
                                 </h1>
-                                <p className="text-xs font-bold text-slate-300">
+                                <p className="text-xs font-bold text-slate-300 truncate">
                                     {isMaster ? 'لوحة تحكم الأدمن' : currentView === 'menu' ? 'غرفة الإدارة' :
                                         currentView === 'stats' ? 'الإحصائيات والداتا' :
                                             currentView === 'kids' ? 'مرايا المخدومين' : currentView === 'activities' ? 'متابعة أنشطة الأسرة' : 'إخوة الرب'}
@@ -214,14 +214,16 @@ export default function Dashboard() {
 
                     <div className="flex items-center gap-2 shrink-0">
                         <ScopedNotificationCenter variant="dark" />
-                            <ScopedSyncButton />
                     </div>
                 </div>
             </header>
 
-            <main className="p-4 max-w-4xl mx-auto mt-4">
+            <main className="p-3.5 sm:p-4 max-w-4xl mx-auto mt-2 sm:mt-4">
                 {currentView === 'menu' && (
                     <div className="animate-in fade-in zoom-in-95 duration-300">
+                        <div className="mb-4">
+                            <ScopedSyncButton />
+                        </div>
                         {/* 🌟 شريط اختيار الأسرة للأدمن (Admin Class Selector) */}
                         {isMaster && (
                             <div className="mb-4 bg-white p-3.5 sm:p-4 rounded-[1.75rem] border border-indigo-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -637,28 +639,28 @@ function StatsView({ childrenData, appSettings }) {
         <div className="animate-in slide-in-from-right-8 duration-300 space-y-6">
 
             {/* 🌟 شريط التبديل بين الإحصائيات العامة وتقرير الحضور والغياب (Requirement #3) */}
-            <div className="flex gap-2 bg-slate-200/60 p-1.5 rounded-2xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-200/60 p-1.5 rounded-2xl">
                 <button
                     type="button"
                     onClick={() => setStatsTab('overview')}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         statsTab === 'overview'
                             ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                             : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
-                    <BarChart3 size={15} /> ملخص الإحصائيات العامة
+                    <BarChart3 size={15} className="shrink-0" /> ملخص الإحصائيات العامة
                 </button>
                 <button
                     type="button"
                     onClick={() => setStatsTab('attendance_report')}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`w-full py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         statsTab === 'attendance_report'
                             ? 'bg-white text-indigo-700 shadow-sm border border-slate-200'
                             : 'text-slate-600 hover:text-slate-900'
                     }`}
                 >
-                    <FileSpreadsheet size={15} /> تقرير الحضور والغياب (شهري / سنوي) 📊
+                    <FileSpreadsheet size={15} className="shrink-0" /> تقرير الحضور والغياب (شهري / سنوي) 📊
                 </button>
             </div>
 
@@ -683,19 +685,19 @@ function StatsView({ childrenData, appSettings }) {
 
                     {/* 🌟 ملخص أرقام أسبوع الخدمة الحالي (من الخميس للأربعاء) */}
                     <div className="bg-gradient-to-br from-indigo-900 to-indigo-950 text-white p-5 rounded-3xl shadow-md border border-indigo-800">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-800/80 pb-3 mb-4">
-                            <div className="flex items-center gap-2">
-                                <Calendar className="text-amber-400 w-5 h-5" />
-                                <div>
-                                    <h3 className="text-xs sm:text-sm font-black">نشاط أسبوع الخدمة الحالي (SSOT)</h3>
-                                    <p className="text-[10px] text-indigo-200 font-bold">دورة الأسبوع: الخميس {weeklyStats.weekStartDate} حتى الأربعاء {weeklyStats.weekEndDate}</p>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 border-b border-indigo-800/80 pb-3 mb-4">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <Calendar className="text-amber-400 w-5 h-5 shrink-0" />
+                                <div className="min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-black truncate">نشاط أسبوع الخدمة الحالي (SSOT)</h3>
+                                    <p className="text-[10px] text-indigo-200 font-bold leading-snug">دورة الأسبوع: الخميس {weeklyStats.weekStartDate} حتى الأربعاء {weeklyStats.weekEndDate}</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 w-full sm:w-auto">
                                 <button
                                     type="button"
                                     onClick={() => setShowWhoAttended(prev => !prev)}
-                                    className="text-[11px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full font-black cursor-pointer transition-colors"
+                                    className="w-full sm:w-auto text-[11px] bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl font-black cursor-pointer transition-colors text-center"
                                 >
                                     👥 مين حضر الخدمة؟ ({weeklyStats.serviceCount} / {total})
                                 </button>
@@ -703,10 +705,10 @@ function StatsView({ childrenData, appSettings }) {
                                     type="button"
                                     onClick={handleCleanupDuplicateAttendance}
                                     disabled={isCleaningUp}
-                                    className="text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full font-black cursor-pointer transition-colors"
+                                    className="w-full sm:w-auto text-[11px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-xl font-black cursor-pointer transition-colors text-center"
                                     title="تنظيف وتصحيح سجلات الحضور المكررة أو اليتيمة"
                                 >
-                                    {isCleaningUp ? '⏳ جاري التنظيف...' : '🧹 تنظيف وتصحيح سجلات الحضور المكررة'}
+                                    {isCleaningUp ? '⏳ جاري التنظيف...' : '🧹 تنظيف سجلات الحضور المكررة'}
                                 </button>
                             </div>
                         </div>

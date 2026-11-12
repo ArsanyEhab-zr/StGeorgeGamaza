@@ -8,12 +8,43 @@
   --color-church-gold-light: #F3E5AB;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'Cairo', system-ui, -apple-system, sans-serif;
   background-color: #f8fafc;
-}@media print {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media print {
   .no-print { display: none !important; }
-  body, main { background: white !important; }
+  html, body, #root, main {
+    background: white !important;
+    overflow: visible !important;
+    max-width: none !important;
+  }
   table { width: 100%; border-collapse: collapse; }
   th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
   .print-only { display: block !important; }

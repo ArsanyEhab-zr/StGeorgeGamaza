@@ -217,17 +217,17 @@ export default function QrAttendance() {
 
             {/* ─── Header ─── */}
             <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800 px-4 py-3">
-                <div className="max-w-lg mx-auto flex items-center justify-between">
+                <div className="max-w-lg mx-auto flex items-center justify-between gap-2">
                     <button
                         onClick={stage === STAGE.CONFIG ? handleExit : stage === STAGE.SCANNING ? goBackToConfig : goBackToScanning}
-                        className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors active:scale-90"
+                        className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors active:scale-90 shrink-0"
                         aria-label="رجوع"
                     >
                         <ArrowRight size={20} />
                     </button>
-                    <h1 className="text-sm font-black flex items-center gap-2">
-                        <QrCode size={18} className="text-indigo-400" />
-                        {stageTitle[stage]}
+                    <h1 className="text-sm font-black flex items-center gap-2 min-w-0 truncate">
+                        <QrCode size={18} className="text-indigo-400 shrink-0" />
+                        <span className="truncate">{stageTitle[stage]}</span>
                     </h1>
                     {stage === STAGE.SCANNING ? (
                         <button
@@ -583,20 +583,20 @@ export default function QrAttendance() {
                                             className="bg-slate-800/80 border border-slate-700 rounded-2xl px-4 py-3 flex items-center justify-between group hover:bg-slate-800 transition-colors animate-in slide-in-from-right-4 fade-in duration-300"
                                             style={{ animationDelay: `${index * 20}ms` }}
                                         >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-indigo-500/15 flex items-center justify-center border border-indigo-500/20 text-lg">
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                <div className="w-10 h-10 rounded-full bg-indigo-500/15 flex items-center justify-center border border-indigo-500/20 text-lg shrink-0">
                                                     {item.gender === 'بنت' ? '👧' : '👦'}
                                                 </div>
-                                                <div>
-                                                    <p className="text-sm font-black text-slate-200">{item.name}</p>
-                                                    <p className="text-[10px] text-slate-500 font-bold mt-0.5 font-mono" dir="ltr">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-sm font-black text-slate-200 truncate">{item.name}</p>
+                                                    <p className="text-[10px] text-slate-500 font-bold mt-0.5 font-mono truncate" dir="ltr">
                                                         {item.raw}
                                                     </p>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => scanner.removeItem(item.childId)}
-                                                className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/25 text-red-400 flex items-center justify-center transition-all opacity-50 group-hover:opacity-100 active:scale-90"
+                                                className="w-9 h-9 rounded-full bg-red-500/10 hover:bg-red-500/25 text-red-400 flex items-center justify-center transition-all opacity-90 sm:opacity-60 group-hover:opacity-100 active:scale-90 shrink-0"
                                                 aria-label={`حذف ${item.name}`}
                                             >
                                                 <X size={15} />

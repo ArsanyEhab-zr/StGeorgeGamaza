@@ -482,9 +482,9 @@ export default function ServantsMonthlyReport() {
             </div>
 
             {/* App Navbar (Hidden on print) */}
-            <header className="bg-slate-900 text-white p-4 sticky top-0 z-50 shadow-lg rounded-b-[2.5rem] no-print border-b border-slate-800">
-                <div className="max-w-7xl mx-auto flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+            <header className="bg-slate-900 text-white p-3.5 sm:p-4 sticky top-0 z-50 shadow-lg rounded-b-3xl sm:rounded-b-[2.5rem] no-print border-b border-slate-800">
+                <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <button 
                             onClick={() => navigate(-1)} 
                             className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center hover:bg-slate-700 transition-all shrink-0"
@@ -492,21 +492,22 @@ export default function ServantsMonthlyReport() {
                         >
                             <ArrowRight size={20} />
                         </button>
-                        <div>
-                            <h1 className="text-lg font-black text-amber-400 flex items-center gap-2">
-                                <Users size={20} /> تقرير اجتماع الخدام
+                        <div className="min-w-0">
+                            <h1 className="text-base sm:text-lg font-black text-amber-400 flex items-center gap-1.5 truncate">
+                                <Users size={18} className="shrink-0" />
+                                <span className="truncate">تقرير اجتماع الخدام</span>
                             </h1>
-                            <p className="text-xs font-bold text-slate-300">
+                            <p className="text-[11px] sm:text-xs font-bold text-slate-300 truncate">
                                 متابعة الحضور والاعتذار والغياب لاجتماع الخدام الأسبوعي
                             </p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         <button 
                             onClick={handleExportExcel} 
                             disabled={isExportingExcel || reportData.length === 0}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 sm:px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg disabled:opacity-50 cursor-pointer"
                         >
                             <FileSpreadsheet size={16} />
                             <span className="hidden sm:inline">تصدير إكسيل</span>
@@ -514,48 +515,50 @@ export default function ServantsMonthlyReport() {
                         <button 
                             onClick={handlePrint} 
                             disabled={reportData.length === 0}
-                            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg cursor-pointer"
+                            className="bg-amber-500 hover:bg-amber-600 text-white px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg cursor-pointer"
                         >
                             <Printer size={16} />
-                            <span>طباعة (A4)</span>
+                            <span>طباعة</span>
                         </button>
                     </div>
                 </div>
             </header>
 
-            <main className="p-4 max-w-[98%] mx-auto mt-4 print-area">
+            <main className="p-3.5 sm:p-4 max-w-[98%] mx-auto mt-2 sm:mt-4 print-area">
                 
                 {/* Control Bar (Hidden on print) */}
-                <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col lg:flex-row gap-4 items-center justify-between no-print animate-in slide-in-from-top-4">
+                <div className="bg-white p-3.5 sm:p-5 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col lg:flex-row gap-3 sm:gap-4 items-center justify-between no-print animate-in slide-in-from-top-4">
                     
                     {/* View Switcher Tabs (Requirement #7: Flexible Period Filter) */}
                     <div className="flex bg-slate-100 p-1 rounded-2xl w-full lg:w-auto">
                         <button 
                             onClick={() => setPeriodMode('monthly')}
-                            className={`flex-1 lg:flex-none px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'monthly' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            className={`flex-1 lg:flex-none px-3 sm:px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'monthly' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                         >
                             شهري 📅
                         </button>
                         <button 
                             onClick={() => setPeriodMode('custom')}
-                            className={`flex-1 lg:flex-none px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'custom' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            className={`flex-1 lg:flex-none px-3 sm:px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'custom' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                         >
                             فترة مخصصة 🗓️
                         </button>
                         <button 
                             onClick={() => setPeriodMode('yearly')}
-                            className={`flex-1 lg:flex-none px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'yearly' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                            className={`flex-1 lg:flex-none px-3 sm:px-5 py-2 rounded-xl font-black text-xs transition-all ${periodMode === 'yearly' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
                         >
                             سنوي 📊
                         </button>
                     </div>
 
                     {/* Inputs for Dates */}
-                    <div className="flex flex-wrap gap-3 items-center w-full lg:w-auto">
+                    <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2.5 items-center w-full lg:w-auto">
                         {periodMode === 'monthly' && (
-                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                                <Calendar className="text-indigo-600" size={16} />
-                                <span className="text-xs font-bold text-slate-500">الشهر:</span>
+                            <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="text-indigo-600 shrink-0" size={16} />
+                                    <span className="text-xs font-bold text-slate-500">الشهر:</span>
+                                </div>
                                 <input 
                                     type="month" 
                                     value={monthYear} 
@@ -566,10 +569,9 @@ export default function ServantsMonthlyReport() {
                         )}
 
                         {periodMode === 'custom' && (
-                            <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200">
-                                <CalendarRange className="text-indigo-600" size={16} />
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-xs font-bold text-slate-500">من:</span>
+                            <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200 w-full sm:w-auto">
+                                <div className="flex items-center justify-between sm:justify-start gap-1.5">
+                                    <span className="text-xs font-bold text-slate-500 flex items-center gap-1"><CalendarRange className="text-indigo-600" size={15} /> من:</span>
                                     <input 
                                         type="date" 
                                         value={fromDate} 
@@ -577,7 +579,7 @@ export default function ServantsMonthlyReport() {
                                         className="bg-white border border-slate-200 rounded-lg px-2 py-1 font-bold text-xs text-slate-700 outline-none cursor-pointer"
                                     />
                                 </div>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center justify-between sm:justify-start gap-1.5">
                                     <span className="text-xs font-bold text-slate-500">إلى:</span>
                                     <input 
                                         type="date" 
@@ -590,9 +592,11 @@ export default function ServantsMonthlyReport() {
                         )}
 
                         {periodMode === 'yearly' && (
-                            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                                <Calendar className="text-indigo-600" size={16} />
-                                <span className="text-xs font-bold text-slate-500">السنة:</span>
+                            <div className="flex items-center justify-between sm:justify-start gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="text-indigo-600 shrink-0" size={16} />
+                                    <span className="text-xs font-bold text-slate-500">السنة:</span>
+                                </div>
                                 <select 
                                     value={selectedYear} 
                                     onChange={(e) => setSelectedYear(e.target.value)} 
@@ -606,12 +610,12 @@ export default function ServantsMonthlyReport() {
                         )}
                         
                         {/* Osra Filter */}
-                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
-                            <Users className="text-slate-500" size={16} />
+                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200 w-full sm:w-auto">
+                            <Users className="text-slate-500 shrink-0" size={16} />
                             <select 
                                 value={osraFilter} 
                                 onChange={(e) => setOsraFilter(e.target.value)} 
-                                className="bg-transparent border-none outline-none font-bold text-xs text-slate-700 max-w-[150px] truncate cursor-pointer"
+                                className="w-full sm:w-auto bg-transparent border-none outline-none font-bold text-xs text-slate-700 sm:max-w-[170px] truncate cursor-pointer"
                             >
                                 <option value="الكل">كل الأسر والخدمات</option>
                                 {uniqueOsras.map(osra => (

@@ -90,32 +90,33 @@ export default function LogVisitationModal({ isOpen, child, onClose, onSuccess }
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200" dir="rtl">
-            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200" dir="rtl">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl max-w-lg w-full max-h-[88vh] flex flex-col overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="bg-linear-to-r from-indigo-600 via-indigo-700 to-purple-700 p-5 text-white relative">
+                <div className="shrink-0 bg-linear-to-r from-indigo-600 via-indigo-700 to-purple-700 p-4 sm:p-5 text-white relative">
                     <button
                         onClick={onClose}
-                        className="absolute left-4 top-4 text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition-colors"
+                        aria-label="إغلاق"
+                        className="absolute left-4 top-4 text-white/80 hover:text-white p-1.5 rounded-full hover:bg-white/10 transition-colors"
                     >
                         <X size={20} />
                     </button>
-                    <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl overflow-hidden shadow-inner">
+                    <div className="flex items-center gap-3 pl-8">
+                        <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-2xl overflow-hidden shadow-inner shrink-0">
                             {child.profilePic ? (
                                 <img src={child.profilePic} alt={child.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                             ) : (
                                 child.gender === 'بنت' ? '👧' : '👦'
                             )}
                         </div>
-                        <div>
+                        <div className="min-w-0">
                             <span className="text-[10px] font-black uppercase tracking-wider text-indigo-200 block">تسجيل افتقاد مخدوم</span>
-                            <h2 className="text-lg font-black">{child.name}</h2>
+                            <h2 className="text-base sm:text-lg font-black truncate">{child.name}</h2>
                         </div>
                     </div>
 
                     {lastVisitStr && (
-                        <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between text-[11px] text-indigo-100">
+                        <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-indigo-100">
                             <span>آخر افتقاد سابق: {lastVisitStr}</span>
                             {lastVisitInfo && (
                                 <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px] font-bold">
@@ -127,7 +128,7 @@ export default function LogVisitationModal({ isOpen, child, onClose, onSuccess }
                 </div>
 
                 {/* Body */}
-                <div className="p-5 space-y-4">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
                     {errorMsg && (
                         <div className="p-3 bg-red-50 text-red-700 rounded-xl text-xs font-bold flex items-center gap-2 border border-red-200">
                             <AlertCircle size={16} />
@@ -191,7 +192,7 @@ export default function LogVisitationModal({ isOpen, child, onClose, onSuccess }
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+                <div className="shrink-0 p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
                     <button
                         type="button"
                         onClick={onClose}

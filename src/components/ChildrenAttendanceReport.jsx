@@ -578,18 +578,18 @@ export default function ChildrenAttendanceReport({ childrenData = [], appSetting
                     </span>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-right border-collapse text-xs">
+                <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                    <table className="w-full text-right border-collapse text-xs sm:text-sm">
                         <thead>
                             <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-black">
-                                <th className="p-3 w-10 text-center">#</th>
-                                <th className="p-3">اسم المخدوم</th>
-                                <th className="p-3">الفصل / الأسرة</th>
-                                <th className="p-3 text-center">حضور الخدمة 🟢</th>
-                                <th className="p-3 text-center">حضور القداس ⛪</th>
-                                <th className="p-3 text-center">غياب الخدمة 🔴</th>
-                                <th className="p-3 text-center">نسبة الحضور %</th>
-                                <th className="p-3">آخر افتقاد ونوعه (Requirement #6)</th>
+                                <th className="px-2.5 py-2 sm:p-3 w-10 text-center">#</th>
+                                <th className="px-2.5 py-2 sm:p-3 min-w-[130px]">اسم المخدوم</th>
+                                <th className="px-2.5 py-2 sm:p-3 min-w-[110px]">الفصل / الأسرة</th>
+                                <th className="px-2.5 py-2 sm:p-3 text-center">حضور الخدمة 🟢</th>
+                                <th className="px-2.5 py-2 sm:p-3 text-center">حضور القداس ⛪</th>
+                                <th className="px-2.5 py-2 sm:p-3 text-center">غياب الخدمة 🔴</th>
+                                <th className="px-2.5 py-2 sm:p-3 text-center">نسبة الحضور %</th>
+                                <th className="px-2.5 py-2 sm:p-3 min-w-[130px]">آخر افتقاد ونوعه</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-bold">

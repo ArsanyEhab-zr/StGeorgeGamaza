@@ -491,20 +491,20 @@ export default function MasterDashboard() {
 
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20" dir="rtl">
-            <header className="bg-linear-to-l from-amber-600 to-yellow-500 text-white p-4 sticky top-0 z-50 shadow-lg rounded-b-[2.5rem]">
+            <header className="bg-linear-to-l from-amber-600 to-yellow-500 text-white p-4 sm:p-6 sticky top-0 z-50 shadow-lg rounded-b-3xl sm:rounded-b-[2.5rem]">
                 <div className="max-w-6xl mx-auto flex flex-col gap-3">
-                    {/* Row 1: Back Button, Title, and Action Logs */}
-                    <div className="flex items-center justify-between gap-3 w-full">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
+                    {/* Row 1: Top Navigation & Icons Bar */}
+                    <div className="flex items-center justify-between gap-2 w-full">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
                                 <ArrowRight size={20} />
                             </button>
                             <div className="min-w-0">
-                                <h1 className="text-base sm:text-lg font-black flex items-center gap-1.5 truncate">
+                                <h1 className="text-lg sm:text-2xl font-extrabold flex items-center gap-1.5 truncate">
                                     <Crown size={18} className="shrink-0 text-amber-200" />
                                     <span className="truncate">لوحة الإدارة الشاملة</span>
                                 </h1>
-                                <p className="text-[10px] sm:text-xs font-bold text-amber-100 truncate">
+                                <p className="text-[11px] sm:text-xs font-bold text-amber-100 truncate">
                                     {selectedOsraKey && activeOsra ? `عرض بيانات: ${activeOsra.name}` : ((isSuperAdmin || isPriest) ? 'مراقبة جميع الأسر الكنسية' : 'مراقبة خدمتك الخاصة')}
                                 </p>
                             </div>
@@ -512,33 +512,42 @@ export default function MasterDashboard() {
 
                         <div className="flex items-center gap-2 shrink-0">
                             <ScopedNotificationCenter variant="amber" />
-                            <ScopedSyncButton />
                             {(isSuperAdmin || isPriest) && (
                                 <button 
                                     onClick={() => navigate('/master-logs')}
-                                    className="bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center gap-1.5 active:scale-95"
+                                    className="w-10 h-10 sm:w-auto sm:px-3.5 sm:py-2 bg-white/20 hover:bg-white/30 text-white rounded-full sm:rounded-xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
                                     title="سجل النشاط المركزي"
                                 >
-                                    <FileText size={15} className="text-amber-200" />
+                                    <FileText size={17} className="text-amber-100 shrink-0" />
                                     <span className="hidden sm:inline">سجل النشاط</span>
                                 </button>
                             )}
                         </div>
                     </div>
 
-                    {/* Row 2: Dedicated Urgent Intervention Bar if cases exist */}
+                    {/* Row 2 & Row 3: Service Week Banner + Responsive Sync/Cleanup Actions */}
+                    <ScopedSyncButton
+                        variant="header-amber"
+                        secondaryAction={!selectedOsraKey ? {
+                            onClick: handleCleanupAttendance,
+                            disabled: isCleaningUp,
+                            label: isCleaningUp ? '⏳ جاري تنظيف السجلات...' : '🧹 تنظيف السجلات المكررة'
+                        } : null}
+                    />
+
+                    {/* Urgent Intervention Bar if cases exist */}
                     {hasUrgentCases && (
-                        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-1 border-t border-white/20">
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-2 border-t border-white/20">
                             <button 
                                 onClick={() => setShowUrgentModal(true)}
-                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-950/20 active:scale-95 transition-all animate-bounce"
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-950/20 active:scale-95 transition-all"
                                 title="حالات التدخل العاجل للآباء الكهنة"
                             >
-                                <span className="relative flex h-2 w-2">
+                                <span className="relative flex h-2 w-2 shrink-0">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
                                     <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
                                 </span>
-                                <span>🚨 حالات التدخل العاجل ({urgentCount})</span>
+                                <span className="truncate">🚨 حالات التدخل العاجل ({urgentCount})</span>
                             </button>
 
                             {permission === 'default' && (
@@ -555,29 +564,29 @@ export default function MasterDashboard() {
                 </div>
             </header>
 
-            <main className="p-4 max-w-4xl mx-auto mt-4">
+            <main className="p-3.5 sm:p-5 max-w-4xl mx-auto mt-2 sm:mt-4">
 
                 {/* 📋 زر الانتقال لسجل النشاط المركزي */}
                 {(isSuperAdmin || isPriest) && !selectedOsraKey && (
                     <div className="mb-4 animate-in fade-in slide-in-from-top-3">
                         <button
                             onClick={() => navigate('/master-logs')}
-                            className="w-full p-4 rounded-2xl font-black text-slate-800 bg-white border border-amber-200/80 shadow-xs hover:shadow-md hover:border-amber-400 flex items-center justify-between gap-3 transition-all group"
+                            className="w-full p-3.5 sm:p-4 rounded-2xl font-black text-slate-800 bg-white border border-amber-200/80 shadow-xs hover:shadow-md hover:border-amber-400 flex items-center justify-between gap-2.5 transition-all group"
                         >
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-lg group-hover:scale-110 transition-transform">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-lg shrink-0 group-hover:scale-110 transition-transform">
                                     📋
                                 </div>
-                                <div className="text-right">
-                                    <h3 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                                        سجل النشاط المركزي (Audit Trail)
-                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">جديد</span>
+                                <div className="text-right min-w-0 flex-1">
+                                    <h3 className="text-xs sm:text-sm font-black text-slate-800 flex flex-wrap items-center gap-1.5">
+                                        <span className="truncate">سجل النشاط المركزي (Audit Trail)</span>
+                                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold shrink-0">جديد</span>
                                     </h3>
-                                    <p className="text-[11px] font-bold text-slate-400 mt-0.5">مراقبة وتتبع جميع الإجراءات وتعديلات الخدام يومياً</p>
+                                    <p className="text-[11px] font-bold text-slate-400 mt-0.5 line-clamp-1">مراقبة وتتبع جميع الإجراءات وتعديلات الخدام يومياً</p>
                                 </div>
                             </div>
-                            <span className="text-xs font-black text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200 group-hover:bg-amber-500 group-hover:text-white transition-all">
-                                عرض السجل ←
+                            <span className="text-[11px] sm:text-xs font-black text-amber-600 bg-amber-50 px-2.5 sm:px-3 py-1.5 rounded-xl border border-amber-200 group-hover:bg-amber-500 group-hover:text-white transition-all shrink-0">
+                                عرض ←
                             </span>
                         </button>
                     </div>
@@ -727,21 +736,21 @@ export default function MasterDashboard() {
                             <Layers size={18} className="text-indigo-500" /> اختر الأسرة لعرض المخدومين والخدام:
                         </h2>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
                             {/* 👑 كارت التجميعة */}
                             <div
                                 onClick={() => setSelectedOsraKey('ALL_CHURCH')}
-                                className="bg-linear-to-r from-indigo-600 to-purple-600 p-4 rounded-4xl shadow-lg cursor-pointer hover:scale-[1.02] transition-transform flex items-center gap-4 group text-white col-span-1 sm:col-span-2"
+                                className="bg-linear-to-r from-indigo-600 to-purple-600 p-3.5 sm:p-5 rounded-3xl sm:rounded-4xl shadow-lg cursor-pointer hover:scale-[1.01] transition-transform flex items-center gap-3 sm:gap-4 group text-white col-span-1 sm:col-span-2"
                             >
-                                <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
-                                    <Users size={32} className="text-white" />
+                                <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white/20 flex items-center justify-center shrink-0 shadow-inner">
+                                    <Users size={26} className="text-white sm:w-8 sm:h-8" />
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-black text-xl">{(isSuperAdmin || isPriest) ? 'كل الكنيسة' : TENANT_CONFIG.MASTER_VIEW_NAME}</h3>
-                                    <p className="text-xs font-bold text-indigo-100 mt-1">جميع الأفراد ضمن نطاق إدارتك</p>
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-black text-base sm:text-xl truncate">{(isSuperAdmin || isPriest) ? 'كل الكنيسة' : TENANT_CONFIG.MASTER_VIEW_NAME}</h3>
+                                    <p className="text-[11px] sm:text-xs font-bold text-indigo-100 mt-0.5 truncate">جميع الأفراد ضمن نطاق إدارتك</p>
                                 </div>
-                                <div className="flex flex-col items-center justify-center bg-white/20 w-16 h-16 rounded-2xl shrink-0 backdrop-blur-sm">
-                                    <span className="font-black text-xl text-white">
+                                <div className="flex flex-col items-center justify-center bg-white/20 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl shrink-0 backdrop-blur-sm">
+                                    <span className="font-black text-lg sm:text-xl text-white">
                                         {children?.filter(c => allowedOsras.some(o => o.syncKey === c.syncKey)).length || 0}
                                     </span>
                                     <span className="text-[10px] font-bold text-indigo-100">مخدوم</span>
@@ -749,7 +758,7 @@ export default function MasterDashboard() {
                             </div>
 
                             {!isStageAdmin && (
-                                <div className="col-span-1 sm:col-span-2 mt-2">
+                                <div className="col-span-1 sm:col-span-2">
                                     <ExcelExporter />
                                 </div>
                             )}
@@ -764,18 +773,6 @@ export default function MasterDashboard() {
                                 />
                             </div>
 
-                            {/* 🧹 زر تنظيف وتصحيح سجلات الحضور المكررة واليتيمة */}
-                            <div className="col-span-1 sm:col-span-2">
-                                <button
-                                    type="button"
-                                    onClick={handleCleanupAttendance}
-                                    disabled={isCleaningUp}
-                                    className="w-full bg-white hover:bg-indigo-50 text-indigo-800 border border-indigo-200 p-3.5 rounded-2xl text-xs font-black shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                                >
-                                    <span>{isCleaningUp ? '⏳ جاري تنظيف وتصحيح السجلات...' : '🧹 تنظيف وتصحيح سجلات الحضور المكررة'}</span>
-                                </button>
-                            </div>
-
                             {/* 📂 كروت الأسر المنفصلة */}
                             {allowedOsras.map((osra) => {
                                 const countKids = classCounts[osra.syncKey] ?? (children?.filter(c => c.syncKey === osra.syncKey).length || 0);
@@ -787,21 +784,21 @@ export default function MasterDashboard() {
                                     <div
                                         key={osra.syncKey}
                                         onClick={() => setSelectedOsraKey(osra.syncKey)}
-                                        className="bg-white p-4 rounded-4xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-amber-300 cursor-pointer transition-all flex items-center gap-4 group"
+                                        className="bg-white p-3.5 sm:p-5 rounded-3xl sm:rounded-4xl shadow-sm border border-slate-200 hover:shadow-lg hover:border-amber-300 cursor-pointer transition-all flex items-center gap-3 sm:gap-4 group"
                                     >
-                                        <div className="w-16 h-16 rounded-full bg-slate-100 border-4 border-slate-50 overflow-hidden shrink-0 shadow-inner group-hover:border-amber-100 transition-colors">
+                                        <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-slate-100 border-4 border-slate-50 overflow-hidden shrink-0 shadow-inner group-hover:border-amber-100 transition-colors">
                                             {osra.logo ? (
                                                 <img src={osra.logo} width="64" height="64" loading="lazy" alt="لوجو الأسرة" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                             ) : (
-                                                <Users className="w-full h-full p-4 text-slate-400" />
+                                                <Users className="w-full h-full p-3 sm:p-4 text-slate-400" />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="font-black text-lg text-slate-800 truncate">{osra.name}</h3>
-                                            <p className="text-[10px] font-bold text-slate-500 mt-1 flex flex-wrap gap-2">
-                                                <span>أمين الأسرة: {osra.amin || 'غير محدد'}</span>
-                                                <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">👨‍🏫 {countServants} خدام</span>
-                                                <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}</span>
+                                            <h3 className="font-black text-base sm:text-lg text-slate-800 truncate">{osra.name}</h3>
+                                            <p className="text-[10px] font-bold text-slate-500 mt-1 flex flex-wrap gap-1.5">
+                                                <span className="truncate max-w-full">أمين الأسرة: {osra.amin || 'غير محدد'}</span>
+                                                <span className="text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded shrink-0">👨‍🏫 {countServants} خدام</span>
+                                                <span className="text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0">{isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}</span>
                                             </p>
 
                                             {/* 🌟 Requirement #2: In-App Class Card Activity Badges */}
@@ -840,44 +837,44 @@ export default function MasterDashboard() {
                     <div className="animate-in slide-in-from-left duration-300 space-y-4">
 
                         {/* الهيدر بتاع الأسرة المحددة */}
-                        <div className="bg-white p-4 rounded-4xl shadow-sm border border-slate-200 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
+                        <div className="bg-white p-3.5 sm:p-5 rounded-3xl sm:rounded-4xl shadow-sm border border-slate-200 flex items-center justify-between gap-2.5">
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
                                 {activeOsra.logo ? (
-                                    <img src={activeOsra.logo} width="48" height="48" loading="eager" alt="لوجو الأسرة" className="w-12 h-12 rounded-full border-2 border-slate-100 object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                    <img src={activeOsra.logo} width="48" height="48" loading="eager" alt="لوجو الأسرة" className="w-11 h-11 sm:w-12 sm:h-12 rounded-full border-2 border-slate-100 object-cover shrink-0" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                 ) : (
-                                    <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500"><Users size={20} /></div>
+                                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 shrink-0"><Users size={20} /></div>
                                 )}
-                                <div>
-                                    <h2 className="font-black text-slate-800 text-sm">{activeOsra.name}</h2>
-                                    <p className="text-[10px] font-bold text-slate-400">مفاتيح الكلاود: {activeOsra.syncKey || 'متعدد'}</p>
+                                <div className="min-w-0">
+                                    <h2 className="font-black text-slate-800 text-sm sm:text-base truncate">{activeOsra.name}</h2>
+                                    <p className="text-[10px] font-bold text-slate-400 truncate">مفاتيح الكلاود: {activeOsra.syncKey || 'متعدد'}</p>
                                 </div>
                             </div>
-                            <button onClick={handleGoBack} className="text-xs font-black bg-slate-100 text-slate-600 px-4 py-2 rounded-xl flex items-center gap-1 hover:bg-slate-200">
+                            <button onClick={handleGoBack} className="text-xs font-black bg-slate-100 text-slate-600 px-3 sm:px-4 py-2 rounded-xl flex items-center gap-1 hover:bg-slate-200 shrink-0">
                                 <ArrowRight size={14} /> عودة
                             </button>
                         </div>
 
                         {/* 🌟 زراير التبديل بين الأطفال والخدام + قائمة مين حضر هذا الأسبوع 🌟 */}
-                        <div className="flex flex-wrap gap-2 bg-slate-200/50 p-1.5 rounded-2xl mb-4">
-                            <button onClick={() => setViewMode('KIDS')} className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${viewMode === 'KIDS' ? 'bg-white text-indigo-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}>
+                        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 bg-slate-200/50 p-1.5 rounded-2xl mb-4">
+                            <button onClick={() => setViewMode('KIDS')} className={`py-2.5 px-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-1.5 sm:flex-1 ${viewMode === 'KIDS' ? 'bg-white text-indigo-800 shadow-sm border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}>
                                 👦👧 المخدومين ({osraChildren.length})
+                            </button>
+                            <button onClick={() => setViewMode('SERVANTS')} className={`py-2.5 px-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-1.5 sm:flex-1 ${viewMode === 'SERVANTS' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30' : 'text-slate-500 hover:bg-slate-200'}`}>
+                                👨‍🏫 الخدام ({osraServants.length})
                             </button>
                             <button
                                 onClick={() => setShowWhoAttendedList(prev => !prev)}
-                                className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${showWhoAttendedList ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}`}
+                                className={`col-span-2 sm:col-span-1 sm:flex-1 py-2.5 px-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-1.5 ${showWhoAttendedList ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30' : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'}`}
                             >
                                 ✅ مين حضر هذا الأسبوع ({selectedClassAttendance?.presentCount || 0} / {selectedClassAttendance?.totalActiveChildren || 0})
-                            </button>
-                            <button onClick={() => setViewMode('SERVANTS')} className={`flex-1 py-3 text-xs font-black rounded-xl transition-all flex justify-center items-center gap-2 ${viewMode === 'SERVANTS' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/30' : 'text-slate-500 hover:bg-slate-200'}`}>
-                                👨‍🏫 الخدام ({osraServants.length})
                             </button>
                         </div>
 
                         {showWhoAttendedList && (
-                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-3xl p-4 mb-4 animate-in fade-in duration-200">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div>
-                                        <h3 className="text-xs sm:text-sm font-black text-emerald-900">
+                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-3xl p-3.5 sm:p-4 mb-4 animate-in fade-in duration-200">
+                                <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                                    <div className="min-w-0 flex-1">
+                                        <h3 className="text-xs sm:text-sm font-black text-emerald-900 leading-snug">
                                             ✅ قائمة المخدومين الحاضرين في الخدمة هذا الأسبوع ({selectedClassAttendance?.whoAttendedServiceList?.length || 0} من {selectedClassAttendance?.totalActiveChildren || 0})
                                         </h3>
                                         <p className="text-[10px] font-bold text-emerald-700 mt-0.5">
@@ -887,7 +884,7 @@ export default function MasterDashboard() {
                                     <button
                                         type="button"
                                         onClick={() => setShowWhoAttendedList(false)}
-                                        className="text-xs font-black text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100"
+                                        className="text-xs font-black text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 hover:bg-emerald-100 shrink-0"
                                     >
                                         إغلاق ✕
                                     </button>

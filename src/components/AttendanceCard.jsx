@@ -65,7 +65,7 @@ const AttendanceCard = ({ child, onEdit }) => {
         <div className="flex items-center justify-between p-3 bg-white rounded-2xl shadow-sm border border-slate-100 mb-3 hover:shadow-md transition-all active:scale-[0.98]">
 
             {/* الجزء اليمين: الصورة، زرار التعديل، والاسم */}
-            <div className="flex items-center gap-3 overflow-hidden">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
                 <div className="relative shrink-0 flex flex-col items-center gap-1">
                     <Link to={`/child/${child.id}`}>
                         <div className={`w-12 h-12 rounded-2xl bg-linear-to-br from-${themeColor}-100 to-${themeColor}-50 border border-${themeColor}-200 flex items-center justify-center text-lg font-black text-${themeColor}-600 shadow-inner`}>
@@ -90,10 +90,10 @@ const AttendanceCard = ({ child, onEdit }) => {
                     </button>
                 </div>
 
-                <div className="flex flex-col">
-                    <h3 className="font-bold text-slate-800 text-[15px] truncate max-w-35">{child.name}</h3>
+                <div className="flex flex-col min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-800 text-[15px] leading-snug line-clamp-2">{child.name}</h3>
 
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex flex-wrap items-center gap-1 mt-1">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">المواظبة</span>
                         <div className="flex gap-1">
                             {[1, 2, 3, 4].map((step) => (
