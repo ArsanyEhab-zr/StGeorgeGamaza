@@ -1,6 +1,7 @@
 import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 import { attendanceIdentity, resolveAttendanceChild } from '../utils/childIdentity';
 import { getDefaultServiceDateForClass } from '../utils/serviceWeek';
+import { getImpersonatedOsra } from '../utils/notificationScopeEngine';
 /* eslint-disable no-unused-vars */
 import React, { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -38,16 +39,18 @@ export default function QrAttendance() {
     const { triggerAutoSync } = useAutoSync();
 
     // ─── Session Config State ───
+    const impersonatedOsra = getImpersonatedOsra();
+    const activeClassSyncKey = impersonatedOsra?.syncKey || localStorage.getItem('currentSyncKey');
     const [stage, setStage] = useState(STAGE.CONFIG);
     const [eventType, setEventType] = useState(null); // 'liturgy' | 'service'
-    const [selectedDate, setSelectedDate] = useState(() => getDefaultServiceDateForClass(localStorage.getItem('currentSyncKey')));
+    const [selectedDate, setSelectedDate] = useState(() => getDefaultServiceDateForClass(activeClassSyncKey, impersonatedOsra?.name));
 
     // ─── Save State ───
     const [isSaving, setIsSaving] = useState(false);
     const [saveResult, setSaveResult] = useState(null); // { success: bool, count: number, message: string } | null
 
     // ─── QR Scanner Hook ───
-    const { canonicalData } = useChurchDataEngine();
+    const { canonicalData } = useChurchDataEngine(impersonatedOsra?.syncKey ? [impersonatedOsra.syncKey] : null);
     const scanner = useQrScanner();
 
     // ─── Derived ───
@@ -80,7 +83,7 @@ export default function QrAttendance() {
         setIsSaving(true);
 
         try {
-            const currentSyncKey = localStorage.getItem('currentSyncKey');
+            const currentSyncKey = getImpersonatedOsra()?.syncKey || localStorage.getItem('currentSyncKey');
             const now = new Date().toISOString();
             const type = eventType; // 'liturgy' | 'service'
             const date = selectedDate;

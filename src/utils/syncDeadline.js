@@ -1,4 +1,4 @@
-export const SYNC_TIMEOUT_MS = 8000;
+export const SYNC_TIMEOUT_MS = 30000;
 
 export function withTimeout(promise, ms = SYNC_TIMEOUT_MS, label = 'المزامنة', onTimeout) {
     let timer;

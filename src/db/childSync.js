@@ -1,8 +1,8 @@
-import { createSyncDeadline, beginSyncStatus } from '../utils/syncDeadline';
+import { createSyncDeadline, beginSyncStatus, SYNC_TIMEOUT_MS } from '../utils/syncDeadline';
 import { logActivity } from '../utils/activityLogger';
 import { db } from './database';
 import { firestore } from './firebase';
-import { collection, getDocsFromServer, doc, setDoc } from 'firebase/firestore';
+import { collection, getDocs, getDocsFromServer, doc, setDoc } from 'firebase/firestore';
 import { encryptData, decryptData } from '../encryption';
 import { normalizeArabicName, sameChild, childAliases, childNameKey, deletionWins, timestamp, attendanceIdentity, resolveAttendanceChild } from '../utils/childIdentity';
 import { getCanonicalActiveChildren, consolidateLocalDexieDuplicates } from '../utils/churchDataEngine';
@@ -169,15 +169,24 @@ export const pushChildSafely = async (child, cloudChildren, deadline = createSyn
 };
 
 const inFlight = new Map();
+const fetchCollectionDocs = async (colRef, deadline) => {
+    try {
+        return await deadline.run(() => getDocs(colRef));
+    } catch (err) {
+        return await deadline.run(() => getDocsFromServer(colRef));
+    }
+};
+
 export const syncClass = (key, parentDeadline) => {
+    if (!key) return Promise.resolve({ success: false, skipped: true });
     if (inFlight.has(key)) return inFlight.get(key);
-    const deadline = createSyncDeadline(`مزامنة الفصل ${key}`);
-    const unlink = parentDeadline?.onCancel(deadline.cancel);
+    const deadline = createSyncDeadline(`مزامنة الفصل ${key}`, SYNC_TIMEOUT_MS);
+    const unlink = parentDeadline?.onCancel?.(deadline.cancel);
     const task = deadline.run(async () => {
         const [kids, attendance, identities] = await Promise.all([
-            deadline.run(() => getDocsFromServer(collection(firestore, 'Osras', key, 'children'))),
-            deadline.run(() => getDocsFromServer(collection(firestore, 'Osras', key, 'attendance'))),
-            deadline.run(() => getDocsFromServer(collection(firestore, 'Osras', key, 'childIdentities')))
+            fetchCollectionDocs(collection(firestore, 'Osras', key, 'children'), deadline),
+            fetchCollectionDocs(collection(firestore, 'Osras', key, 'attendance'), deadline),
+            fetchCollectionDocs(collection(firestore, 'Osras', key, 'childIdentities'), deadline)
         ]);
         const cloudChildren = [...kids.docs, ...identities.docs].map(decodeCloudRecord);
         await reconcileCloudChildrenBatch(cloudChildren, deadline);
@@ -208,6 +217,7 @@ export const syncClass = (key, parentDeadline) => {
         }
         deadline.check();
         localStorage.setItem(`lastSyncTime_${key}`, new Date().toISOString());
+        return { success: true, syncKey: key };
     }).finally(() => {
         deadline.cancel();
         unlink?.();
@@ -217,32 +227,58 @@ export const syncClass = (key, parentDeadline) => {
     return task;
 };
 
+export const syncWithCloud = (syncKey) => {
+    if (!syncKey) return Promise.resolve({ success: false });
+    return syncClass(syncKey).catch(err => {
+        console.warn(`[Sync] Single class sync warning (${syncKey}):`, err?.message || err);
+        return { success: false, syncKey, error: err?.message };
+    });
+};
+
 const scopedFlights = new Map();
 export const syncScopedClassesFromCloud = (keys = scopedSyncKeys(), parentDeadline) => {
     const allowed = new Set(scopedSyncKeys());
     const scope = [...new Set(keys)].filter(k => allowed.has(k)).sort();
     const lockKey = JSON.stringify(scope);
     if (scopedFlights.has(lockKey)) return scopedFlights.get(lockKey);
-    const deadline = createSyncDeadline('مزامنة الفصول');
-    const unlink = parentDeadline?.onCancel(deadline.cancel);
     const finishStatus = beginSyncStatus();
     let outcome = 'error';
     const startedAt = performance.now();
-    const task = deadline.run(async () => {
+    const BATCH_SIZE = 3;
+    const task = (async () => {
         const failures = [];
-        // A slow network must not starve later classes on each eight-second retry.
+        // Prioritize classes with oldest sync checkpoint so progressive batches update stale classes first
         const queue = [...scope].sort((a, b) => timestamp(localStorage.getItem(`lastSyncTime_${a}`)) - timestamp(localStorage.getItem(`lastSyncTime_${b}`)));
-        for (let i = 0; i < queue.length; i += 5) {
-            deadline.check();
-            const results = await deadline.run(() => Promise.allSettled(queue.slice(i, i + 5).map(key => syncClass(key, deadline))));
-            results.forEach((r, j) => { if (r.status === 'rejected') failures.push(`${queue[i + j]}: ${r.reason.message}`); });
+        for (let i = 0; i < queue.length; i += BATCH_SIZE) {
+            const batch = queue.slice(i, i + BATCH_SIZE);
+            const results = await Promise.allSettled(batch.map(key => syncClass(key, parentDeadline)));
+            results.forEach((r, j) => {
+                if (r.status === 'rejected') {
+                    const failedKey = batch[j];
+                    const msg = r.reason?.message || String(r.reason);
+                    console.warn(`[Sync] تخطي الفصل البطيء (${failedKey}) واستكمال باقي الفصول:`, msg);
+                    failures.push(`${failedKey}: ${msg}`);
+                }
+            });
         }
-        await deadline.run(() => consolidateLocalDexieDuplicates(deadline));
-        if (failures.length) throw new Error(failures.join('\n'));
-        return { success: true, classCount: scope.length, durationMs: Math.round(performance.now() - startedAt) };
-    }).then(result => { outcome = 'success'; return result; }).finally(() => {
-        deadline.cancel();
-        unlink?.();
+        try {
+            const cleanupDeadline = createSyncDeadline('توحيد السجلات المحلية', SYNC_TIMEOUT_MS);
+            await cleanupDeadline.run(() => consolidateLocalDexieDuplicates(cleanupDeadline));
+        } catch (cleanupErr) {
+            console.warn('[Sync] Local duplicate consolidation warning:', cleanupErr?.message || cleanupErr);
+        }
+        const syncedCount = scope.length - failures.length;
+        const allFailed = scope.length > 0 && syncedCount === 0;
+        outcome = allFailed ? 'error' : 'success';
+        return {
+            success: !allFailed,
+            partial: failures.length > 0 && !allFailed,
+            classCount: scope.length,
+            syncedCount,
+            failures,
+            durationMs: Math.round(performance.now() - startedAt)
+        };
+    })().finally(() => {
         if (scopedFlights.get(lockKey) === task) scopedFlights.delete(lockKey);
         finishStatus(outcome);
     });

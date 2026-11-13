@@ -26,7 +26,7 @@ import { getVisitationInfo, formatLastVisitedDate } from '../utils/visitationTyp
 import useAutoSync from '../hooks/useAutoSync';
 import { calculateExactAge } from '../utils/dateUtils';
 import { logActivity } from '../utils/activityLogger';
-import { deleteChildEverywhere } from '../db/sync';
+import { deleteChildEverywhere, syncWithCloud, pullStructureFromCloud } from '../db/sync';
 import {
     getCurrentServiceFridayDate,
     getServiceWeekRange,
@@ -43,6 +43,7 @@ import {
 } from '../utils/churchDataEngine';
 import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
 import ScopedNotificationCenter from '../components/ScopedNotificationCenter';
+import { getImpersonatedOsra } from '../utils/notificationScopeEngine';
 
 const getSettings = () => {
     const defaults = {
@@ -64,14 +65,16 @@ const getSettings = () => {
 export default function Dashboard() {
     const [currentView, setCurrentView] = useState('menu');
     const [appSettings, setAppSettings] = useState(getSettings());
-    const currentSyncKey = localStorage.getItem('currentSyncKey');
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    const impersonatedOsra = getImpersonatedOsra();
+    const currentSyncKey = impersonatedOsra?.syncKey || localStorage.getItem('currentSyncKey');
+    const isMaster = !impersonatedOsra?.syncKey && (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN');
     
     // 🔥 تعريفات سحب الداتا السحابية والمحلية
     const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
     const allowedClasses = currentServantObj.allowedClasses || [];
 
     const [activeClassKey, setActiveClassKey] = useState(() => {
+        if (impersonatedOsra?.syncKey) return impersonatedOsra.syncKey;
         return sessionStorage.getItem('dashboard_activeClassKey') || 'all';
     });
 
@@ -86,20 +89,22 @@ export default function Dashboard() {
     }, [appSettings.services, currentSyncKey, JSON.stringify(allowedClasses)]);
 
     // 🌟 Single Source of Truth (SSOT) Engine for children & attendance
-    const engineScope = scopedSyncKeys().includes(activeClassKey) ? activeClassKey : scopedSyncKeys();
+    const engineScope = impersonatedOsra?.syncKey
+        ? [impersonatedOsra.syncKey]
+        : (scopedSyncKeys().includes(activeClassKey) ? activeClassKey : scopedSyncKeys());
 
     const {
         isLoading: isEngineLoading,
         activeChildren: children
     } = useChurchDataEngine(engineScope, {
-        targetSyncKey: isMaster ? activeClassKey : currentSyncKey
+        targetSyncKey: impersonatedOsra?.syncKey ? impersonatedOsra.syncKey : (isMaster ? activeClassKey : currentSyncKey)
     });
 
     const { triggerAutoSync } = useAutoSync();
 
     // 🌟 currentSyncKey and isMaster are already defined above with the children query
 
-    // 🌟🌟🌟 زرعنا كود الطرد التلقائي هنا 🌟🌟🌟
+    // 🌟🌟🌟 زرعنا كود الطرد التلقائي هنا (باستخدام pullStructureFromCloud السريع) 🌟🌟🌟
     useEffect(() => {
         const verifyServantAccess = async () => {
             try {
@@ -107,22 +112,18 @@ export default function Dashboard() {
                 if (!servantData) return;
 
                 const currentServant = JSON.parse(servantData);
-                // لو ده أدمن كبير ملوش أسرة متسجلة، مش هنطبق عليه الفحص ده
                 if (!currentServant.osraName) return;
 
-                const querySnapshot = await getDocs(collection(firestore, "System"));
-                let isOsraStillExists = false;
+                const res = await pullStructureFromCloud();
+                const services = res?.settings?.services;
+                if (!Array.isArray(services) || services.length === 0) return;
 
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (data.services) {
-                        data.services.forEach(service => {
-                            if (service.osras) {
-                                service.osras.forEach(osra => {
-                                    if (osra.name === currentServant.osraName) {
-                                        isOsraStillExists = true;
-                                    }
-                                });
+                let isOsraStillExists = false;
+                services.forEach(service => {
+                    if (service.osras) {
+                        service.osras.forEach(osra => {
+                            if (osra.name === currentServant.osraName) {
+                                isOsraStillExists = true;
                             }
                         });
                     }
@@ -131,7 +132,6 @@ export default function Dashboard() {
                 if (!isOsraStillExists) {
                     alert("⚠️ جالك قرار إزالة! تم إغلاق أسرتك أو إزالتك من النظام المركزي بواسطة الإدارة. جاري مسح بياناتك وتسجيل الخروج فوراً.");
 
-                    // 🌟 الضربة القاضية: فرمتة الداتا بيز المحلية عشان منسيبش أثر
                     db.children.clear();
                     db.attendance.clear();
 
@@ -140,8 +140,7 @@ export default function Dashboard() {
                     window.location.href = '/login';
                 }
             } catch (error) {
-                console.error("النت فاصل أو فيه مشكلة في فحص الصلاحيات:", error);
-                // لو النت فاصل هنسيبه يكمل أوفلاين عادي ومش هنطرده
+                console.warn("النت فاصل أو فيه مشكلة في فحص الصلاحيات:", error?.message || error);
             }
         };
 
@@ -966,8 +965,8 @@ function KidsManagerView({ childrenData }) {
         }
 
         const now = new Date().toISOString();
-        const currentSyncKey = localStorage.getItem('currentSyncKey');
-        const childDataToSave = { ...formChild, birthMonth: bMonth, isDirty: true, updatedAt: now, isDeleted: false, syncKey: currentSyncKey };
+        const targetSyncKey = editingChild?.syncKey || getImpersonatedOsra()?.syncKey || localStorage.getItem('currentSyncKey');
+        const childDataToSave = { ...formChild, birthMonth: bMonth, isDirty: true, updatedAt: now, isDeleted: false, syncKey: targetSyncKey };
 
         if (editingChild) {
             delete childDataToSave.id; // Strictly ensure ID cannot be updated
@@ -980,11 +979,14 @@ function KidsManagerView({ childrenData }) {
             const rand = crypto.randomUUID().split('-')[0].substring(0, 4).toUpperCase();
             const newId = `${year}-${g}-${rand}`;
             
-            await db.children.add({ ...childDataToSave, id: newId, streak: 0, gotClothes: false });
+            await db.children.add({ ...childDataToSave, id: newId, cloudId: newId, streak: 0, gotClothes: false });
             logActivity('ADD_CHILD', `إضافة مخدوم جديد: ${formChild.name}`);
             setIsAdding(false);
         }
         setFormChild(emptyChild);
+        if (targetSyncKey && targetSyncKey !== 'MASTER_ACCESS' && targetSyncKey !== 'ADMIN_MODE' && targetSyncKey !== 'STAGE_ADMIN') {
+            void syncWithCloud(targetSyncKey);
+        }
         triggerAutoSync();
         alert("تم الحفظ بنجاح! ✅");
     };

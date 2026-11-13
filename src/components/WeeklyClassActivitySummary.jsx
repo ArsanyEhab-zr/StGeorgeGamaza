@@ -22,40 +22,50 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
     return (
         <div className="bg-white/90 backdrop-blur-md rounded-3xl p-3.5 sm:p-5 shadow-sm border border-slate-200/90 mb-5 transition-all" dir="rtl">
             {/* Top Bar Header */}
-            <div className="flex flex-wrap items-center justify-between gap-2.5">
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
-                        <Calendar size={18} />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center justify-between gap-2 w-full sm:w-auto sm:flex-1 min-w-0">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shrink-0">
+                            <Calendar size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <h3 className="text-xs sm:text-sm font-black text-slate-800 flex flex-wrap items-center gap-1.5">
+                                <span>إشعارات نشاط الفصول هذا الأسبوع</span>
+                                {isAllAttended && (
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold border border-emerald-200 flex items-center gap-1 shrink-0">
+                                        <Sparkles size={11} /> ممتاز! اكتمل الحضور
+                                    </span>
+                                )}
+                            </h3>
+                            <p className="text-[10px] font-bold text-slate-400 leading-snug">
+                                متابعة دورة أسبوع الخدمة الحالي (من الخميس إلى الأربعاء)
+                            </p>
+                        </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                        <h3 className="text-xs sm:text-sm font-black text-slate-800 flex flex-wrap items-center gap-1.5">
-                            <span className="truncate">إشعارات نشاط الفصول هذا الأسبوع</span>
-                            {isAllAttended && (
-                                <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full font-bold border border-emerald-200 flex items-center gap-1 shrink-0">
-                                    <Sparkles size={11} /> ممتاز! اكتمل الحضور
-                                </span>
-                            )}
-                        </h3>
-                        <p className="text-[10px] font-bold text-slate-400 leading-snug">
-                            متابعة دورة أسبوع الخدمة الحالي (من الخميس إلى الأربعاء)
-                        </p>
-                    </div>
+
+                    <button 
+                        onClick={() => setIsCollapsed(!isCollapsed)}
+                        className="sm:hidden w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0"
+                        title={isCollapsed ? 'عرض التفاصيل' : 'تصغير'}
+                    >
+                        {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+                    </button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <div className="flex items-center justify-between sm:justify-end gap-1.5 shrink-0 w-full sm:w-auto">
                     {/* Quick counter chips */}
-                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-black">
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-black w-full sm:w-auto">
+                        <span className="flex-1 sm:flex-initial text-center bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
                             ✅ حضور: {attendedCount}/{totalClasses}
                         </span>
-                        <span className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
+                        <span className="flex-1 sm:flex-initial text-center bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-xl whitespace-nowrap">
                             🏡 افتقاد: {visitedCount}/{totalClasses}
                         </span>
                     </div>
 
                     <button 
                         onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0"
+                        className="hidden sm:flex w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 items-center justify-center transition-colors shrink-0"
                         title={isCollapsed ? 'عرض التفاصيل' : 'تصغير'}
                     >
                         {isCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}

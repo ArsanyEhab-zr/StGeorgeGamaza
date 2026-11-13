@@ -69,9 +69,13 @@ export function useScopedNotifications() {
             } catch (_e) {}
         };
         window.addEventListener('syncKey-changed', refreshIdentity);
+        window.addEventListener('auth-changed', refreshIdentity);
+        window.addEventListener('servant-profile-updated', refreshIdentity);
         window.addEventListener('storage', refreshIdentity);
         return () => {
             window.removeEventListener('syncKey-changed', refreshIdentity);
+            window.removeEventListener('auth-changed', refreshIdentity);
+            window.removeEventListener('servant-profile-updated', refreshIdentity);
             window.removeEventListener('storage', refreshIdentity);
         };
     }, []);

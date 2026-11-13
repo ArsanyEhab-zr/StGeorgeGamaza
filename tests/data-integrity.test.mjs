@@ -6,8 +6,9 @@ import { attendanceIdentity, resolveAttendanceChild } from '../src/utils/childId
 import { deleteChildEverywhere, restoreChildEverywhere, syncScopedClassesFromCloud, reconcileCloudChild, pushChildSafely } from '../src/db/childSync.js';
 import { getDefaultServiceDateForClass } from '../src/utils/serviceWeek.js';
 const storage = new Map();
-globalThis.localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v) };
-globalThis.window = { localStorage };
+globalThis.localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) };
+globalThis.Event = class { constructor(type) { this.type = type; } };
+globalThis.window = { localStorage, dispatchEvent: () => {} };
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: false }, configurable: true });
 const child = { id: 7, cloudId: 'cloud-A', name: 'أبانوب مينا جرجس', syncKey: 'class-A', updatedAt: 1 };
 const row = { date: '2026-11-13', type: 'service', status: 'present', syncKey: 'class-A', childId: 7, updatedAt: 1 };
@@ -133,4 +134,27 @@ test('an explicit unknown stage never falls back to another class', async () => 
  localStorage.setItem('currentServant',JSON.stringify({role:'stage_admin',assignedStages:['missing-stage']}));
  const { scopedSyncKeys } = await import('../src/db/childSync.js');
  assert.deepEqual(scopedSyncKeys(),[]);
+});
+test('servant impersonation switches Priest/Master scope to single-class servant and restores on exit', async () => {
+ await reset();
+ localStorage.setItem('currentSyncKey', 'MASTER_ACCESS');
+ localStorage.setItem('currentServant', JSON.stringify({ role: 'كاهن', name: 'أبونا' }));
+ const { scopedSyncKeys } = await import('../src/db/childSync.js');
+ const { startOsraImpersonation, exitOsraImpersonation, resolveServantNotificationScope } = await import('../src/utils/notificationScopeEngine.js');
+ const { formatCopticDate } = await import('../src/utils/serviceWeek.js');
+ assert.deepEqual(scopedSyncKeys().sort(), ['class-A', 'class-B']);
+
+ startOsraImpersonation({ syncKey: 'class-B', name: 'ثانية إعدادي' }, 'MASTER_ACCESS');
+ assert.deepEqual(scopedSyncKeys(), ['class-B']);
+ const impScope = resolveServantNotificationScope();
+ assert.equal(impScope.tier, 'class_servant');
+ assert.equal(impScope.isImpersonating, true);
+ assert.equal(impScope.primarySyncKey, 'class-B');
+
+ exitOsraImpersonation();
+ assert.deepEqual(scopedSyncKeys().sort(), ['class-A', 'class-B']);
+ assert.equal(resolveServantNotificationScope().tier, 'master_detailed');
+
+ const copticStr = formatCopticDate(new Date(2026, 10, 12, 12));
+ assert.ok(copticStr.includes('هاتور'), `Expected Arabic Coptic month name in "${copticStr}"`);
 });

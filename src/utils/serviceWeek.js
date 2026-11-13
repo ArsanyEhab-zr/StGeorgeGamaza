@@ -264,16 +264,48 @@ export const getElapsedServiceDatesForClass = (startDateStr, endDateStr, {
     return Array.from(datesSet).sort();
 };
 
+const COPTIC_MONTHS_AR = [
+    'توت',
+    'بابه',
+    'هاتور',
+    'كيهك',
+    'طوبة',
+    'أمشير',
+    'برمهات',
+    'برمودة',
+    'بشنس',
+    'بؤونة',
+    'أبيب',
+    'مسرى',
+    'نسئ'
+];
+
 /**
- * Formats a date into a clean Arabic Coptic date string (e.g., '٢٠ بابه ١٧٤٣')
- * stripping any era designations like AM/PM and ensuring standard Arabic month names.
+ * Formats a date into a clean Arabic Coptic date string (e.g., '٣ هاتور ١٧٤٣ ش')
+ * mapping numeric Coptic months (1..13) directly to explicit Arabic Coptic month names.
  */
 export const formatCopticDate = (d = new Date()) => {
     try {
         const target = (typeof d === 'number' || typeof d === 'string') ? new Date(d) : d;
         if (isNaN(target.getTime())) return 'التقويم القبطي';
-        let str = new Intl.DateTimeFormat('ar-EG-u-ca-coptic', { day: 'numeric', month: 'long', year: 'numeric' }).format(target);
 
+        const parts = new Intl.DateTimeFormat('en-u-ca-coptic', {
+            day: 'numeric',
+            month: 'numeric',
+            year: 'numeric'
+        }).formatToParts(target);
+
+        const dayNum = parseInt(parts.find(p => p.type === 'day')?.value || '', 10);
+        const monthNum = parseInt(parts.find(p => p.type === 'month')?.value || '', 10);
+        const yearNum = parseInt(parts.find(p => p.type === 'year')?.value || '', 10);
+
+        if (!isNaN(dayNum) && monthNum >= 1 && monthNum <= 13 && !isNaN(yearNum)) {
+            const arNumber = new Intl.NumberFormat('ar-EG', { useGrouping: false });
+            const monthName = COPTIC_MONTHS_AR[monthNum - 1];
+            return `${arNumber.format(dayNum)} ${monthName} ${arNumber.format(yearNum)} ش`;
+        }
+
+        let str = new Intl.DateTimeFormat('ar-EG-u-ca-coptic', { day: 'numeric', month: 'long', year: 'numeric' }).format(target);
         const monthsMap = {
             'tout': 'توت', 'thout': 'توت',
             'baba': 'بابه', 'paopi': 'بابه',
@@ -292,7 +324,6 @@ export const formatCopticDate = (d = new Date()) => {
         Object.keys(monthsMap).forEach(m => {
             str = str.replace(new RegExp(m, 'gi'), monthsMap[m]);
         });
-        // Remove AM, PM, ERA, English characters
         str = str.replace(/\b(AM|PM|ERA\d*|A\.M\.)\b/gi, '').replace(/[a-zA-Z]/g, '').trim();
         str = str.replace(/\s+/g, ' ');
         return str || 'التقويم القبطي';

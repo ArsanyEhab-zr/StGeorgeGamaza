@@ -1,9 +1,8 @@
-import { createSyncDeadline } from '../utils/syncDeadline';
 import { scopedSyncKeys } from '../db/childSync';
-import { resolveServantNotificationScope } from '../utils/notificationScopeEngine';
+import { resolveServantNotificationScope, extractAllOsrasFromSettings } from '../utils/notificationScopeEngine';
 import { childAliases, attendanceIdentity } from '../utils/childIdentity';
 import ScopedSyncButton from '../components/ScopedSyncButton';
-import { deleteChildEverywhere } from '../db/sync';
+import { deleteChildEverywhere, pullStructureFromCloud } from '../db/sync';
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -47,12 +46,16 @@ export default function MasterDashboard() {
     const [appSettings, setAppSettings] = useState(JSON.parse(localStorage.getItem('appSettings')) || {});
 
 
-    // 👑 تحديد الصلاحيات بدقة جراحية
+    // 👑 تحديد الصلاحيات بدقة جراحية (مع تجاهل وضع التصفح المؤقت عند فتح لوحة الكاهن الشاملة)
+    const masterScope = useMemo(
+        () => resolveServantNotificationScope(currentServant, null, currentSyncKey, { ignoreImpersonation: true }),
+        [currentServant, currentSyncKey, appSettings]
+    );
     const isSuperAdmin = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentServant.role === 'أدمن مساعد';
     const isStageAdmin = currentServant.role === 'أمين مرحلة';
     const isPriest = currentServant.role === 'كاهن';
     const isAmin = currentServant.role === 'أمين خدمة' || currentServant.role === 'أمين أسرة';
-    const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin || resolveServantNotificationScope().tier !== 'class_servant';
+    const hasAccess = isSuperAdmin || isPriest || isAmin || isStageAdmin || masterScope.tier !== 'class_servant';
 
     // States
     const [selectedOsraKey, setSelectedOsraKey] = useState(sessionStorage.getItem('master_osraKey') || null);
@@ -74,7 +77,13 @@ export default function MasterDashboard() {
     useEffect(() => sessionStorage.setItem('master_gender', genderFilter), [genderFilter]);
     useEffect(() => sessionStorage.setItem('master_viewMode', viewMode), [viewMode]);
 
-    const allowedOsras = (appSettings.services || []).flatMap(s => s.osras || []).filter(o => scopedSyncKeys().includes(o.syncKey));
+    const allowedOsras = useMemo(() => {
+        const allExtracted = extractAllOsrasFromSettings(appSettings, [], { includeFallback: true });
+        const scope = resolveServantNotificationScope(currentServant, allExtracted, currentSyncKey, { ignoreImpersonation: true });
+        const allowedSet = new Set(scope.allowedSyncKeys || []);
+        if (allowedSet.size === 0) return allExtracted;
+        return allExtracted.filter(o => allowedSet.has(o.syncKey));
+    }, [appSettings, currentServant, currentSyncKey]);
 
     // 🌟 Single Source of Truth (SSOT) Engine for children, class counts, and validated weekly attendance
     const allowedSyncKeyList = useMemo(
@@ -91,10 +100,9 @@ export default function MasterDashboard() {
     });
 
     const handleCleanupAttendance = async () => {
-        const deadline = createSyncDeadline('تنظيف الحضور');
         try {
             setIsCleaningUp(true);
-            const res = await deadline.run(() => cleanupDuplicateAndOrphanedAttendance(deadline));
+            const res = await cleanupDuplicateAndOrphanedAttendance({ removeCloudOrphans: true });
             triggerAutoSync();
             alert(
                 `✅ تم تنظيف وتصحيح سجلات الحضور بنجاح!\n` +
@@ -104,52 +112,32 @@ export default function MasterDashboard() {
         } catch (err) {
             alert('حدث خطأ أثناء تنظيف السجلات: ' + err.message);
         } finally {
-            deadline.cancel();
             setIsCleaningUp(false);
         }
     };
 
-    // 🌟🌟 Auto-Pull: سحب الهيكل المركزي تلقائياً عند فتح الصفحة 🌟🌟
+    // 🌟🌟 Auto-Pull: سحب الهيكل المركزي تلقائياً عند فتح الصفحة بدون أقفال تعارض 🌟🌟
     useEffect(() => {
-        const deadline = createSyncDeadline('تحميل الهيكل');
         const autoFetchStructure = async () => {
-            if (!navigator.onLine || !hasAccess) return;
-            try {
-                const settingsRef = doc(firestore, 'System', 'mainConfig');
-                const snap = await deadline.run(() => getDoc(settingsRef));
-                if (snap.exists()) {
-                    const cloudConfig = snap.data();
-                    const localSettingsString = localStorage.getItem('appSettings');
-                    const localSettings = JSON.parse(localSettingsString || '{}');
-
-                    const mergedSettings = {
-                        ...localSettings,
-                        services: cloudConfig.services || [],
-                        servants: cloudConfig.servants || []
-                    };
-
-                    localStorage.setItem('appSettings', JSON.stringify(mergedSettings));
-                    setAppSettings(mergedSettings);
-                    console.log('🔄 [MasterDashboard] Auto-pulled structure from cloud.');
-                }
-            } catch (error) {
-                console.warn('[MasterDashboard] Auto-pull failed:', error.message);
+            if (!hasAccess) return;
+            const res = await pullStructureFromCloud();
+            if (res?.settings) {
+                setAppSettings(res.settings);
             }
         };
-        autoFetchStructure();
+        void autoFetchStructure();
 
         // 🔄 Live Listener: Re-sync servant data & structure when a profile is updated anywhere
         const handleProfileUpdate = () => {
             try {
                 const freshSettings = JSON.parse(localStorage.getItem('appSettings') || '{}');
                 setAppSettings(freshSettings);
-            } catch (_e) {}
+            } catch (_e) { }
         };
         window.addEventListener('servant-profile-updated', handleProfileUpdate);
         window.addEventListener('storage', handleProfileUpdate);
 
         return () => {
-            deadline.cancel();
             window.removeEventListener('servant-profile-updated', handleProfileUpdate);
             window.removeEventListener('storage', handleProfileUpdate);
         };
@@ -165,7 +153,7 @@ export default function MasterDashboard() {
         if (c.whatsappTarget === 'child' && c.childPhone) return `📱 ${c.childPhone}`;
         if (c.whatsappTarget === 'father' && c.fatherPhone) return `👨 ${c.fatherPhone}`;
         if (c.whatsappTarget === 'mother' && c.motherPhone) return `👩 ${c.motherPhone}`;
-        
+
         if (c.childPhone) return `📱 ${c.childPhone}`;
         if (c.fatherPhone) return `👨 ${c.fatherPhone}`;
         if (c.motherPhone) return `👩 ${c.motherPhone}`;
@@ -253,7 +241,7 @@ export default function MasterDashboard() {
                             const rawData = oldSnap.data();
                             childDataToMigrate = rawData.payload ? decryptData(rawData.payload) : rawData;
                         }
-                    } catch (_err) {}
+                    } catch (_err) { }
 
                     if (!childDataToMigrate) {
                         childDataToMigrate = { ...child };
@@ -286,7 +274,7 @@ export default function MasterDashboard() {
                                 batch.set(newAttDocRef, { payload: encryptData(updatedAtt) });
                                 batch.delete(attDoc.ref);
                             }
-                        } catch (_e) {}
+                        } catch (_e) { }
                     }
 
                     transferredCount++;
@@ -314,7 +302,7 @@ export default function MasterDashboard() {
                                     isDirty: false,
                                     updatedAt: now
                                 });
-                            } catch (_e) {}
+                            } catch (_e) { }
                         }
 
                         // Update attendance syncKey in Dexie
@@ -337,7 +325,7 @@ export default function MasterDashboard() {
                                     });
                                 }
                             }
-                        } catch (_e) {}
+                        } catch (_e) { }
 
                         // Update grades syncKey in Dexie
                         await db.grades.where('childId').equals(childId).modify({
@@ -467,11 +455,11 @@ export default function MasterDashboard() {
 
     const handleResolveIntervention = async (childId, noteId) => {
         if (!window.confirm('هل أنت متأكد من حل هذه المشكلة وإغلاق طلب التدخل؟')) return;
-        
+
         try {
             const childToUpdate = await db.children.get(childId);
             if (childToUpdate && childToUpdate.notes) {
-                const updatedNotes = childToUpdate.notes.map(n => 
+                const updatedNotes = childToUpdate.notes.map(n =>
                     n.id === noteId ? { ...n, interventionStatus: 'resolved' } : n
                 );
                 const hasPendingNotes = updatedNotes.some(n => n.requiresIntervention && n.interventionStatus === 'pending');
@@ -501,10 +489,13 @@ export default function MasterDashboard() {
                     {/* Row 1: Top Navigation & Icons Bar */}
                     <div className="flex items-center justify-between gap-2 w-full">
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
+                                <ArrowRight size={20} />
+                            </button>
                             <div className="min-w-0">
-                                <h1 className="text-base sm:text-2xl font-extrabold flex items-center gap-1.5 min-w-0">
+                                <h1 className="text-lg sm:text-2xl font-extrabold flex items-center gap-1.5 truncate">
                                     <Crown size={18} className="shrink-0 text-amber-200" />
-                                    <span className="whitespace-normal break-words">لوحة الإدارة الشاملة</span>
+                                    <span className="truncate">لوحة الإدارة الشاملة</span>
                                 </h1>
                                 <p className="text-[11px] sm:text-xs font-bold text-amber-100 truncate">
                                     {selectedOsraKey && activeOsra ? `عرض بيانات: ${activeOsra.name}` : ((isSuperAdmin || isPriest) ? 'مراقبة جميع الأسر الكنسية' : 'مراقبة خدمتك الخاصة')}
@@ -515,7 +506,7 @@ export default function MasterDashboard() {
                         <div className="flex items-center gap-2 shrink-0">
                             <ScopedNotificationCenter variant="amber" />
                             {(isSuperAdmin || isPriest) && (
-                                <button 
+                                <button
                                     onClick={() => navigate('/master-logs')}
                                     className="w-10 h-10 sm:w-auto sm:px-3.5 sm:py-2 bg-white/20 hover:bg-white/30 text-white rounded-full sm:rounded-xl text-xs font-black backdrop-blur-md transition-all shadow-xs flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
                                     title="سجل النشاط المركزي"
@@ -524,25 +515,45 @@ export default function MasterDashboard() {
                                     <span className="hidden sm:inline">سجل النشاط</span>
                                 </button>
                             )}
-                            <button onClick={handleGoBack} aria-label="الرجوع للخلف" className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all shrink-0 backdrop-blur-md active:scale-95">
-                                <ArrowRight size={20} />
-                            </button>
                         </div>
                     </div>
 
                     {/* Row 2 & Row 3: Service Week Banner + Responsive Sync/Cleanup Actions */}
                     <ScopedSyncButton
                         variant="header-amber"
-                        secondaryAction={hasUrgentCases ? {
-                            onClick: () => setShowUrgentModal(true),
-                            label: `🚨 حالات التدخل العاجل (${urgentCount})`
+                        secondaryAction={!selectedOsraKey ? {
+                            onClick: handleCleanupAttendance,
+                            disabled: isCleaningUp,
+                            label: isCleaningUp ? '⏳ جاري تنظيف السجلات...' : '🧹 تنظيف السجلات المكررة'
                         } : null}
                     />
 
-                    <div className="flex flex-wrap items-center gap-2">
-                        {!selectedOsraKey && <button onClick={handleCleanupAttendance} disabled={isCleaningUp} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-bold disabled:opacity-60">{isCleaningUp ? 'جارٍ تنظيف السجلات…' : '🧹 تنظيف السجلات المكررة'}</button>}
-                        {hasUrgentCases && permission === 'default' && <button onClick={requestNotificationPermission} className="rounded-xl bg-white/15 px-3 py-2 text-xs font-bold">🔔 تفعيل الإشعارات</button>}
-                    </div>
+                    {/* Urgent Intervention Bar if cases exist */}
+                    {hasUrgentCases && (
+                        <div className="flex flex-wrap items-center justify-between gap-2 w-full pt-2 border-t border-white/20">
+                            <button
+                                onClick={() => setShowUrgentModal(true)}
+                                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-black shadow-md shadow-red-950/20 active:scale-95 transition-all"
+                                title="حالات التدخل العاجل للآباء الكهنة"
+                            >
+                                <span className="relative flex h-2 w-2 shrink-0">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                                </span>
+                                <span className="truncate">🚨 حالات التدخل العاجل ({urgentCount})</span>
+                            </button>
+
+                            {permission === 'default' && (
+                                <button
+                                    onClick={requestNotificationPermission}
+                                    className="w-full sm:w-auto text-[11px] font-bold bg-white/20 hover:bg-white/30 text-white border border-white/30 px-3 py-1.5 rounded-xl transition-colors flex items-center justify-center gap-1 shrink-0 backdrop-blur-md"
+                                    title="تفعيل إشعارات التدخل العاجل على الهاتف"
+                                >
+                                    🔔 تفعيل الإشعارات
+                                </button>
+                            )}
+                        </div>
+                    )}
                 </div>
             </header>
 
@@ -695,8 +706,8 @@ export default function MasterDashboard() {
                                                 <UserCircle size={14} /> الخادم المُبلغ: <span className="text-slate-700">{intervention.servantName}</span> • {new Date(intervention.date).toLocaleDateString('ar-EG')}
                                             </p>
                                         </div>
-                                        <button 
-                                            onClick={() => handleResolveIntervention(intervention.childId, intervention.id)} 
+                                        <button
+                                            onClick={() => handleResolveIntervention(intervention.childId, intervention.id)}
                                             className="bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-500 hover:text-white px-4 py-2 rounded-xl font-black text-sm transition-colors flex items-center gap-2 w-full md:w-auto justify-center"
                                         >
                                             <CheckCircle size={16} /> تمت المتابعة وحل المشكلة
@@ -747,11 +758,11 @@ export default function MasterDashboard() {
 
                             {/* 📊 Compact Weekly Activity Summary Bar (Requirement #2) */}
                             <div className="col-span-1 sm:col-span-2">
-                                <WeeklyClassActivitySummary 
-                                    classes={allowedOsras} 
+                                <WeeklyClassActivitySummary
+                                    classes={allowedOsras}
                                     activityByClass={activityByClass}
                                     classCounts={classCounts}
-                                    onClassClick={(osra) => setSelectedOsraKey(osra.syncKey)} 
+                                    onClassClick={(osra) => setSelectedOsraKey(osra.syncKey)}
                                 />
                             </div>
 
@@ -911,14 +922,14 @@ export default function MasterDashboard() {
                         {/* 🌟 أزرار الانتقال المباشر لتقارير ومتابعة الخدام 🌟 */}
                         {viewMode === 'SERVANTS' && (
                             <div className="flex flex-col sm:flex-row gap-2 mb-3">
-                                <button 
+                                <button
                                     type="button"
                                     onClick={() => navigate('/servants-report')}
                                     className="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2.5 px-4 rounded-xl font-black text-xs shadow-md shadow-amber-500/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                                 >
                                     <Printer size={16} /> تقرير اجتماع الخدام
                                 </button>
-                                <button 
+                                <button
                                     type="button"
                                     onClick={() => navigate('/admin/servants-followup')}
                                     className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 px-4 rounded-xl font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
@@ -938,22 +949,22 @@ export default function MasterDashboard() {
                                     </div>
                                 ) : (
                                     osraServants.map(servant => (
-                                        <div 
-                                            key={servant.id} 
+                                        <div
+                                            key={servant.id}
                                             onClick={() => setSelectedServantForProfile(servant)}
                                             className="bg-white p-4 rounded-2xl shadow-sm border border-amber-100 flex flex-col md:flex-row md:items-center justify-between gap-4 relative overflow-hidden group hover:shadow-md hover:border-amber-300 transition-all cursor-pointer"
                                             title="اضغط لعرض الملف الشخصي وإحصائيات الخادم"
                                         >
                                             <div className="absolute top-0 right-0 w-1.5 h-full bg-amber-400 group-hover:bg-amber-500 transition-colors"></div>
 
-                                             <div className="flex items-center gap-3 pr-2">
-                                                 <div className="w-12 h-12 rounded-full ring-2 ring-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-xs">
-                                                     {servant.photoURL || servant.profileImage || servant.profilePic ? (
-                                                         <img src={servant.photoURL || servant.profileImage || servant.profilePic} alt={servant.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                                                     ) : (
-                                                         <UserCircle size={28} className="text-amber-400" />
-                                                     )}
-                                                 </div>
+                                            <div className="flex items-center gap-3 pr-2">
+                                                <div className="w-12 h-12 rounded-full ring-2 ring-amber-100 bg-amber-50 text-amber-700 flex items-center justify-center font-bold overflow-hidden shrink-0 shadow-xs">
+                                                    {servant.photoURL || servant.profileImage || servant.profilePic ? (
+                                                        <img src={servant.photoURL || servant.profileImage || servant.profilePic} alt={servant.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                                    ) : (
+                                                        <UserCircle size={28} className="text-amber-400" />
+                                                    )}
+                                                </div>
 
                                                 <div>
                                                     <h3 className="font-black text-slate-800 flex items-center gap-2 group-hover:text-amber-700 transition-colors">
@@ -976,7 +987,7 @@ export default function MasterDashboard() {
                                             </div>
 
                                             <div className="flex items-center gap-2 self-end md:self-center">
-                                                <button 
+                                                <button
                                                     type="button"
                                                     onClick={(e) => {
                                                         e.stopPropagation();
@@ -990,18 +1001,18 @@ export default function MasterDashboard() {
                                                 <span className="text-[11px] font-black text-amber-700 bg-amber-50 group-hover:bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-200/60 transition-colors ml-2 hidden sm:inline-block">
                                                     عرض البروفايل 👤
                                                 </span>
-                                                <a 
-                                                    href={`tel:${servant.phone}`} 
+                                                <a
+                                                    href={`tel:${servant.phone}`}
                                                     onClick={(e) => e.stopPropagation()}
                                                     title="اتصال هاتفياً"
                                                     className="bg-slate-50 text-slate-600 p-2.5 rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center shadow-xs"
                                                 >
                                                     <Phone size={16} />
                                                 </a>
-                                                <a 
-                                                    href={`https://wa.me/${cleanPhoneForWhatsapp(servant.phone)}`} 
-                                                    target="_blank" 
-                                                    rel="noreferrer" 
+                                                <a
+                                                    href={`https://wa.me/${cleanPhoneForWhatsapp(servant.phone)}`}
+                                                    target="_blank"
+                                                    rel="noreferrer"
                                                     onClick={(e) => e.stopPropagation()}
                                                     title="محادثة واتساب"
                                                     className="bg-green-50 text-green-600 p-2.5 rounded-xl hover:bg-green-100 transition-colors flex items-center justify-center shadow-xs"
@@ -1065,7 +1076,7 @@ export default function MasterDashboard() {
                 )}
 
 
-                
+
                 {/* ⚠️ منطقة الخطر للإدارة المركزية (Global Wipe) */}
                 {isSuperAdmin && (
                     <div className="mt-8 pt-6">
@@ -1074,9 +1085,9 @@ export default function MasterDashboard() {
                                 <AlertTriangle className="text-red-500" size={18} /> منطقة الخطر (Danger Zone - Global Wipe)
                             </h3>
                             <p className="text-[10px] font-bold text-red-600/80 mb-4">احذر: هذا القسم يمسح بيانات جميع الفصول على مستوى الكنيسة.</p>
-                            
+
                             <div className="flex flex-col gap-3">
-                                <button 
+                                <button
                                     onClick={async () => {
                                         if (selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH') {
                                             alert("تنبيه: لا يمكن مسح جميع الفصول أثناء تفعيل فلتر لأسرة معينة. قم بإلغاء الفلتر أولاً.");
@@ -1098,13 +1109,13 @@ export default function MasterDashboard() {
                                                 }
                                             }
                                         }
-                                    }} 
+                                    }}
                                     className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm ${selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-amber-500 text-white hover:bg-amber-600'}`}
                                 >
                                     <RefreshCw size={16} /> تصفير العدادات لجميع الفصول (Global Reset)
                                 </button>
-                                
-                                <button 
+
+                                <button
                                     onClick={async () => {
                                         if (selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH') {
                                             alert("تنبيه: لا يمكن مسح جميع الفصول أثناء تفعيل فلتر لأسرة معينة. قم بإلغاء الفلتر أولاً.");
@@ -1118,10 +1129,10 @@ export default function MasterDashboard() {
                                                     const now = new Date().toISOString();
                                                     const allKids = await db.children.toArray();
                                                     for (const child of allKids.filter(c => allowedSyncKeyList.includes(c.syncKey))) await deleteChildEverywhere(child, JSON.parse(localStorage.getItem('currentServant') || '{}').name);
-                                                    
+
                                                     const allAtt = await db.attendance.toArray();
                                                     // Linked attendance is tombstoned atomically by deleteChildEverywhere.
-                                                    
+
                                                     logActivity('GLOBAL_WIPE', `مسح كامل لجميع الفصول (${allKids.length} مخدوم + ${allAtt.length} سجل حضور)`);
                                                     triggerAutoSync();
                                                     alert("تم مسح البيانات بالكامل لجميع الفصول! الأرض فاضية. 🧹");
@@ -1133,7 +1144,7 @@ export default function MasterDashboard() {
                                                 alert("تم إلغاء العملية، كلمة المرور خاطئة.");
                                             }
                                         }
-                                    }} 
+                                    }}
                                     className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-sm border ${selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? 'bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed' : 'bg-white text-red-600 border-red-100 hover:bg-red-50'}`}
                                 >
                                     <Trash2 size={16} /> مسح المخدومين والغياب لجميع الفصول (Clean Slate)
@@ -1146,7 +1157,7 @@ export default function MasterDashboard() {
 
             {/* 🌟 بروفايل الخادم (معاينة إدارية لأبونا / السوبر أدمن) 🌟 */}
             {selectedServantForProfile && (
-                <ServantProfile 
+                <ServantProfile
                     servantData={selectedServantForProfile}
                     servant={selectedServantForProfile}
                     isOpen={true}
@@ -1164,7 +1175,7 @@ export default function MasterDashboard() {
                     onClose={() => setEditingServant(null)}
                     onSaved={(updated) => {
                         setAppSettings(prev => {
-                            const updatedList = (prev.servants || []).map(s => 
+                            const updatedList = (prev.servants || []).map(s =>
                                 (s.id === updated.id || (s.phone && s.phone === updated.phone)) ? { ...s, ...updated } : s
                             );
                             return { ...prev, servants: updatedList };
@@ -1175,7 +1186,7 @@ export default function MasterDashboard() {
             )}
 
             {/* 🚨 Urgent Intervention Modal for Priests & Admins (Requirement #1) */}
-            <UrgentInterventionModal 
+            <UrgentInterventionModal
                 isOpen={showUrgentModal}
                 onClose={() => setShowUrgentModal(false)}
                 urgentCases={urgentCases}

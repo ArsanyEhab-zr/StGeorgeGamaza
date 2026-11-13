@@ -16,6 +16,7 @@ import {
     getLocalDateString
 } from '../utils/serviceWeek';
 import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import { getImpersonatedOsra } from '../utils/notificationScopeEngine';
 
 export default function Attendance() {
     const { triggerAutoSync } = useAutoSync();
@@ -31,16 +32,19 @@ export default function Attendance() {
     useEffect(() => sessionStorage.setItem('attendance_filter', activeFilter), [activeFilter]);
     useEffect(() => sessionStorage.setItem('attendance_search', searchQuery), [searchQuery]);
 
-    // 🔐 Resolve active class syncKey & className
-    const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '').trim();
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    // 🔐 Resolve active class syncKey & className (with full Servant Impersonation support)
+    const impersonatedOsra = getImpersonatedOsra();
+    const currentSyncKey = String(impersonatedOsra?.syncKey || localStorage.getItem('currentSyncKey') || '').trim();
+    const isMaster = !impersonatedOsra?.syncKey && (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN');
     const dashboardActiveClass = sessionStorage.getItem('dashboard_activeClassKey') || 'all';
-    const activeSyncKey = (isMaster && dashboardActiveClass && dashboardActiveClass !== 'all')
-        ? dashboardActiveClass
-        : currentSyncKey;
+    const activeSyncKey = impersonatedOsra?.syncKey
+        ? impersonatedOsra.syncKey
+        : ((isMaster && dashboardActiveClass && dashboardActiveClass !== 'all')
+            ? dashboardActiveClass
+            : currentSyncKey);
 
     const classInfo = useMemo(() => resolveClassInfo(activeSyncKey), [activeSyncKey]);
-    const activeClassName = classInfo.className || localStorage.getItem('assignedOsra') || '';
+    const activeClassName = impersonatedOsra?.name || classInfo.className || localStorage.getItem('assignedOsra') || '';
     const isThursdayClass = useMemo(
         () => isThursdayServiceClass(activeSyncKey, activeClassName),
         [activeSyncKey, activeClassName]

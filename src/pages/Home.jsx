@@ -1,4 +1,5 @@
-import { scopedSyncKeys } from '../db/childSync';
+import { scopedSyncKeys, syncWithCloud } from '../db/childSync';
+import { pullStructureFromCloud } from '../db/sync';
 import ScopedSyncButton from '../components/ScopedSyncButton';
 /* eslint-disable react-hooks/rules-of-hooks */
 /* eslint-disable no-unused-vars */
@@ -21,6 +22,13 @@ import { useUrgentInterventionAlerts } from '../hooks/useUrgentInterventionAlert
 import UrgentInterventionModal from '../components/UrgentInterventionModal';
 import WeeklyClassActivitySummary from '../components/WeeklyClassActivitySummary';
 import ScopedNotificationCenter from '../components/ScopedNotificationCenter';
+import {
+    getImpersonatedOsra,
+    startOsraImpersonation,
+    exitOsraImpersonation,
+    extractAllOsrasFromSettings,
+    resolveServantNotificationScope
+} from '../utils/notificationScopeEngine';
 
 export default function Home() {
     const navigate = useNavigate();
@@ -29,11 +37,42 @@ export default function Home() {
     const [modalState, setModalState] = useState({ isOpen: false, type: null });
     const [showPastDatePicker, setShowPastDatePicker] = useState(false);
     const [pastDate, setPastDate] = useState('');
-    const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
+    const [currentSyncKey, setCurrentSyncKey] = useState(() => String(localStorage.getItem('currentSyncKey') || ''));
+    const [impersonatedOsra, setImpersonatedOsra] = useState(() => getImpersonatedOsra());
+    const [settingsVersion, setSettingsVersion] = useState(0);
+
+    useEffect(() => {
+        const refreshAuthAndScope = () => {
+            setCurrentSyncKey(String(localStorage.getItem('currentSyncKey') || ''));
+            setImpersonatedOsra(getImpersonatedOsra());
+            setSettingsVersion(v => v + 1);
+        };
+        window.addEventListener('syncKey-changed', refreshAuthAndScope);
+        window.addEventListener('auth-changed', refreshAuthAndScope);
+        window.addEventListener('servant-profile-updated', refreshAuthAndScope);
+        window.addEventListener('storage', refreshAuthAndScope);
+        return () => {
+            window.removeEventListener('syncKey-changed', refreshAuthAndScope);
+            window.removeEventListener('auth-changed', refreshAuthAndScope);
+            window.removeEventListener('servant-profile-updated', refreshAuthAndScope);
+            window.removeEventListener('storage', refreshAuthAndScope);
+        };
+    }, []);
+
+    // سحب هيكل الكنيسة في الخلفية بدون أقفال لضمان تحديث قائمة الأسر دائماً
+    useEffect(() => {
+        void pullStructureFromCloud().then((res) => {
+            if (res?.updated) setSettingsVersion(v => v + 1);
+        });
+    }, []);
+
+    const isImpersonating = Boolean(impersonatedOsra?.syncKey);
+    const activeSyncKey = isImpersonating ? impersonatedOsra.syncKey : currentSyncKey;
     
     // 🌟 جلب أنشطة الأسرة من قاعدة البيانات المحلية (Dexie)
     const activities = useLiveQuery(() => 
-        db.activities.filter(a => a.syncKey === currentSyncKey && !a.isDeleted).toArray()
+        db.activities.filter(a => a.syncKey === activeSyncKey && !a.isDeleted).toArray(),
+        [activeSyncKey]
     ) || [];
 
     const targetedActivities = activities.filter(a => a.type === 'targeted');
@@ -42,8 +81,13 @@ export default function Home() {
     // 🌟 جلب بيانات الخادم من التخزين المحلي
     const currentServant = JSON.parse(localStorage.getItem('currentServant') || '{}');
 
-    // 🌟 تحديد صلاحيات الخادم (ماستر أو كاهن أو أمين خدمة أو أدمن مساعد)
-    const isMaster = scopedSyncKeys().length > 1 || currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE' || currentSyncKey === 'STAGE_ADMIN';
+    // 🌟 تحديد صلاحيات الخادم (عند تفعيل "الدخول كخادم للأسرة" يتحول العرض فوراً إلى شاشة خادم الفصل الواحد)
+    const isMaster = !isImpersonating && (
+        scopedSyncKeys().length > 1 ||
+        currentSyncKey === 'MASTER_ACCESS' ||
+        currentSyncKey === 'ADMIN_MODE' ||
+        currentSyncKey === 'STAGE_ADMIN'
+    );
     const isLeadership = isMaster || currentServant.role === 'كاهن' || currentServant.role === 'أمين أسرة' || currentServant.role === 'أدمن مساعد' || currentServant.role === 'أمين مرحلة';
 
     // 🌟 جلب إعدادات الكنيسة والخدمة
@@ -63,7 +107,7 @@ export default function Home() {
         activeChildren: children,
         classCounts,
         weeklyAttendance
-    } = useChurchDataEngine();
+    } = useChurchDataEngine(isImpersonating ? [activeSyncKey] : null);
 
     // 🌟 Real-time weekly class activity badges (Requirement #2)
     const { activityByClass } = useWeeklyClassActivity();
@@ -106,9 +150,9 @@ export default function Home() {
                     finalKhedmaLogo = parsed.services?.[0]?.logo || parsed.khedmaLogo || "";
                     finalOsraName = "كل الأسر (صلاحية كاملة)";
                 } else if (parsed.services && Array.isArray(parsed.services)) {
-                    // البحث عن أسرة الخادم
+                    // البحث عن أسرة الخادم أو الأسرة المتصفحة حالياً
                     for (const service of parsed.services) {
-                        const foundOsra = (service.osras || []).find(o => String(o.syncKey).trim() === String(currentSyncKey).trim());
+                        const foundOsra = (service.osras || []).find(o => String(o.syncKey).trim() === String(activeSyncKey).trim());
                         if (foundOsra) {
                             finalKhedmaName = service.name;
                             finalKhedmaLogo = service.logo;
@@ -121,6 +165,15 @@ export default function Home() {
                             break;
                         }
                     }
+                    if (isImpersonating && impersonatedOsra?.name && finalOsraName === (parsed.osraName || "الأسرة")) {
+                        finalOsraName = impersonatedOsra.name;
+                        finalKhedmaName = impersonatedOsra.serviceName || finalKhedmaName;
+                        finalOsraLogo = impersonatedOsra.logo || finalOsraLogo;
+                    }
+                } else if (isImpersonating && impersonatedOsra?.name) {
+                    finalOsraName = impersonatedOsra.name;
+                    finalKhedmaName = impersonatedOsra.serviceName || finalKhedmaName;
+                    finalOsraLogo = impersonatedOsra.logo || finalOsraLogo;
                 }
 
                 // 🌟 3. عرض البيانات في الشاشة
@@ -157,8 +210,15 @@ export default function Home() {
                 }
 
             } catch (e) { console.error("Error reading settings", e); }
+        } else if (isImpersonating && impersonatedOsra?.name) {
+            setAppSettings({
+                khedmaName: impersonatedOsra.serviceName || "الخدمة",
+                khedmaLogo: "",
+                osraName: impersonatedOsra.name,
+                osraLogo: impersonatedOsra.logo || ""
+            });
         }
-    }, [targetDate, currentSyncKey, isMaster]);
+    }, [targetDate, activeSyncKey, isMaster, isImpersonating, impersonatedOsra, settingsVersion]);
 
 
     useEffect(() => {
@@ -295,35 +355,34 @@ export default function Home() {
 
     const masterOsras = useMemo(() => {
         if (!isMaster) return [];
-        const savedSettings = localStorage.getItem('appSettings');
-        if (savedSettings) {
-            try {
-                const parsed = JSON.parse(savedSettings);
-                let list = [];
-                if (parsed.services && Array.isArray(parsed.services)) {
-                    parsed.services.forEach(s => {
-                        if (s.osras) list = [...list, ...s.osras];
-                    });
-                }
-                
-                if (currentServant.role === 'أمين مرحلة') {
-                    const allowed = currentServant.allowedClasses || [];
-                    list = list.filter(osra => allowed.includes(osra.syncKey));
-                }
-                
-                return list.filter(osra => scopedSyncKeys().includes(osra.syncKey));
-            } catch (e) { return []; }
+        try {
+            const extraKeys = Object.keys(classCounts || {});
+            const allExtracted = extractAllOsrasFromSettings(null, extraKeys, { includeFallback: true });
+            const masterScope = resolveServantNotificationScope(currentServant, allExtracted, currentSyncKey, { ignoreImpersonation: true });
+            const allowedSet = new Set(masterScope.allowedSyncKeys || []);
+            if (allowedSet.size === 0) return allExtracted;
+            return allExtracted.filter(osra => allowedSet.has(osra.syncKey));
+        } catch (_e) {
+            return [];
         }
-        return [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isMaster]);
+    }, [isMaster, classCounts, currentServant, currentSyncKey, settingsVersion]);
 
     const handleEnterOsra = (osra) => {
-        localStorage.setItem('masterSyncKey', currentSyncKey);
-        localStorage.setItem('currentSyncKey', osra.syncKey);
-        localStorage.setItem('assignedOsra', osra.name);
-        localStorage.setItem('isSuperAdminImpersonating', 'true');
-        window.location.reload();
+        if (!osra?.syncKey) return;
+        const payload = startOsraImpersonation(osra, currentSyncKey);
+        if (payload) {
+            setImpersonatedOsra(payload);
+            setCurrentSyncKey(payload.syncKey);
+            void syncWithCloud(payload.syncKey);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    };
+
+    const handleExitOsraImpersonation = () => {
+        const restoredKey = exitOsraImpersonation();
+        setImpersonatedOsra(null);
+        setCurrentSyncKey(restoredKey);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     const handleCurriculumClick = () => {
@@ -508,6 +567,88 @@ export default function Home() {
                 {/* 🌟 التطبيقات الذكية المتغيرة (تم إزالتها وتحويلها لبطاقات رئيسية بناءً على طلب المستخدم) */}
 
 
+
+                {/* 🌟 بطاقة وضع تصفح الأسرة كخادم (Single-Class Servant Impersonation Overview) */}
+                {isImpersonating && (
+                    <div className="mb-6 bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-900 text-white p-4 sm:p-5 rounded-3xl shadow-xl border border-amber-400/30 animate-in fade-in duration-300">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center font-black text-lg shrink-0">
+                                    {impersonatedOsra?.name ? impersonatedOsra.name.charAt(0) : 'ف'}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[11px] font-black bg-amber-500 text-indigo-950 px-2.5 py-0.5 rounded-full">
+                                            وضع خادم الفصل
+                                        </span>
+                                        <span className="text-xs font-bold text-indigo-200">
+                                            {impersonatedOsra?.stageName || ''}
+                                        </span>
+                                    </div>
+                                    <h2 className="text-lg sm:text-xl font-black text-white truncate mt-1">
+                                        {impersonatedOsra?.name || appSettings.osraName}
+                                    </h2>
+                                </div>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={handleExitOsraImpersonation}
+                                className="w-full sm:w-auto bg-white/10 hover:bg-white/20 text-white border border-white/20 px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shrink-0"
+                            >
+                                🔙 العودة للوحة الفصول الشاملة
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
+                            <div className="bg-white/10 rounded-2xl p-2.5 text-center border border-white/10">
+                                <span className="block text-lg sm:text-xl font-black text-amber-300">
+                                    {children?.length || classCounts?.[activeSyncKey] || 0}
+                                </span>
+                                <span className="text-[11px] font-bold text-indigo-100">إجمالي المخدومين</span>
+                            </div>
+                            <div className="bg-emerald-500/20 rounded-2xl p-2.5 text-center border border-emerald-400/30">
+                                <span className="block text-lg sm:text-xl font-black text-emerald-300">
+                                    {weeklyAttendance?.presentCount || 0}
+                                </span>
+                                <span className="text-[11px] font-bold text-emerald-100">حضور هذا الأسبوع</span>
+                            </div>
+                            <div className="bg-blue-500/20 rounded-2xl p-2.5 text-center border border-blue-400/30">
+                                <span className="block text-lg sm:text-xl font-black text-blue-300">
+                                    {weeklyAttendance?.liturgyCount || 0}
+                                </span>
+                                <span className="text-[11px] font-bold text-blue-100">حضور القداس</span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            <Link
+                                to="/qr-attendance"
+                                className="bg-amber-500 hover:bg-amber-400 text-indigo-950 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                            >
+                                <QrCode size={15} /> حضور بالـ QR
+                            </Link>
+                            <Link
+                                to="/attendance"
+                                className="bg-indigo-600 hover:bg-indigo-500 text-white py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                            >
+                                <Users size={15} /> سجل الغياب
+                            </Link>
+                            <Link
+                                to="/visitation"
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                            >
+                                <MapPin size={15} /> خريطة الافتقاد
+                            </Link>
+                            <Link
+                                to="/dashboard"
+                                className="bg-white/15 hover:bg-white/25 text-white py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                            >
+                                <Settings size={15} /> لوحة تحكم الفصل
+                            </Link>
+                        </div>
+                    </div>
+                )}
 
                 {/* 🌟 لوحة الكاهن الشاملة (تظهر فقط للأدمن/الكاهن) */}
                 {isMaster && currentServant.role !== 'أمين مرحلة' && (

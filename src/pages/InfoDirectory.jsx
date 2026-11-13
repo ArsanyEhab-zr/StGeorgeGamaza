@@ -1,4 +1,5 @@
 import { useChurchDataEngine } from '../hooks/useChurchDataEngine';
+import { getImpersonatedOsra } from '../utils/notificationScopeEngine';
 import React, { useState } from 'react';
 import { db } from '../db/database';
 import { Link } from 'react-router-dom';
@@ -10,10 +11,11 @@ export default function InfoDirectory() {
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedMonthFilter, setSelectedMonthFilter] = useState("all");
 
-    // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس
-    const currentSyncKey = String(localStorage.getItem('currentSyncKey') || '');
-    const isMaster = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
-    const { activeChildren } = useChurchDataEngine();
+    // 🔐 عزل البيانات: كل أسرة تشوف أطفالها بس (مع دعم وضع الدخول كخادم للأسرة)
+    const impersonatedOsra = getImpersonatedOsra();
+    const currentSyncKey = String(impersonatedOsra?.syncKey || localStorage.getItem('currentSyncKey') || '');
+    const isMaster = !impersonatedOsra?.syncKey && (currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE');
+    const { activeChildren } = useChurchDataEngine(impersonatedOsra?.syncKey ? [impersonatedOsra.syncKey] : null);
     const children = activeChildren.filter(c => !searchQuery || c.name?.toLowerCase().includes(searchQuery.toLowerCase()));
 
 

@@ -1,7 +1,7 @@
-import { syncScopedClassesFromCloud, scopedSyncKeys, deleteChildEverywhere } from './childSync';
-export { syncScopedClassesFromCloud, deleteChildEverywhere, restoreChildEverywhere } from './childSync';
+import { syncScopedClassesFromCloud, scopedSyncKeys, deleteChildEverywhere, syncWithCloud, syncClass } from './childSync';
+export { syncScopedClassesFromCloud, deleteChildEverywhere, restoreChildEverywhere, syncWithCloud, syncClass } from './childSync';
 import { db as localDb } from './database';
-import { createSyncDeadline, beginSyncStatus, boundedDatabase } from '../utils/syncDeadline';
+import { createSyncDeadline, beginSyncStatus, boundedDatabase, withTimeout, SYNC_TIMEOUT_MS } from '../utils/syncDeadline';
 import { firestore } from './firebase';
 import { collection, collectionGroup, getDocs as firestoreGetDocs, doc, setDoc as firestoreSetDoc, deleteDoc as firestoreDeleteDoc, getDoc as firestoreGetDoc } from 'firebase/firestore';
 
@@ -28,12 +28,96 @@ const formatDetailedList = (list) => {
     return `${safeList.slice(0, 4).join('، ')} ... (+${safeList.length - 4} آخرين)`;
 };
 
-const _syncDataWithCloud = async deadline => {
-    const db = boundedDatabase(localDb, deadline);
-    const getDocs = (...args) => deadline.run(() => firestoreGetDocs(...args));
-    const getDoc = (...args) => deadline.run(() => firestoreGetDoc(...args));
-    const setDoc = (...args) => deadline.run(() => firestoreSetDoc(...args));
-    const deleteDoc = (...args) => deadline.run(() => firestoreDeleteDoc(...args));
+/**
+ * 🌟 سحب هيكل الكنيسة والفصول والخدام من السحابة مباشرة بدون أقفال تعارض
+ */
+export const pullStructureFromCloud = async () => {
+    try {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            const cached = JSON.parse(localStorage.getItem('appSettings') || '{}');
+            return { success: false, offline: true, settings: cached, updated: false };
+        }
+        const settingsRef = doc(firestore, 'System', 'mainConfig');
+        const settingsSnap = await withTimeout(firestoreGetDoc(settingsRef), SYNC_TIMEOUT_MS, 'تحميل الهيكل');
+        if (!settingsSnap || !settingsSnap.exists()) {
+            const cached = JSON.parse(localStorage.getItem('appSettings') || '{}');
+            return { success: false, settings: cached, updated: false };
+        }
+
+        const cloudSettings = settingsSnap.data() || {};
+
+        // 🚨 SESSION VALIDATION: AUTO-LOGOUT DELETED USERS
+        const currentServantStr = localStorage.getItem('currentServant');
+        const currentSyncKey = localStorage.getItem('currentSyncKey');
+
+        if (currentServantStr && currentSyncKey && currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE') {
+            const currentServant = JSON.parse(currentServantStr);
+            const role = currentServant.role || '';
+
+            if (role !== 'Super Admin' && role !== 'أدمن النظام') {
+                const servantsList = cloudSettings.servants || [];
+                const isStillExists = servantsList.some(s => {
+                    if (currentServant.id && s.id) return s.id === currentServant.id;
+                    return s.phone === currentServant.phone && s.name === currentServant.name;
+                });
+
+                if (!isStillExists && servantsList.length > 0) {
+                    console.warn("🔴 User deleted from cloud. Forcing auto-logout.");
+                    localStorage.removeItem('currentServant');
+                    localStorage.removeItem('currentSyncKey');
+                    localStorage.removeItem('userPhone');
+
+                    await localDb.children.clear();
+                    await localDb.attendance.clear();
+                    await localDb.events.clear();
+                    await localDb.exams.clear();
+                    await localDb.grades.clear();
+
+                    if (typeof window !== 'undefined' && window.location) {
+                        window.location.href = '#/login';
+                        window.location.reload?.();
+                    }
+                    return { success: false, halted: true };
+                }
+            }
+        }
+
+        const localSettingsString = localStorage.getItem('appSettings');
+        let settingsUpdated = false;
+        let mergedSettings = JSON.parse(localSettingsString || '{}');
+
+        if (JSON.stringify(cloudSettings) !== localSettingsString) {
+            const hasPendingSettings = localStorage.getItem('pendingStructureSync') === 'true';
+            if (!hasPendingSettings) {
+                mergedSettings = { ...mergedSettings, ...cloudSettings };
+                localStorage.setItem('appSettings', JSON.stringify(mergedSettings));
+                settingsUpdated = true;
+
+                try {
+                    await localDb.servants.clear();
+                } catch (e) {
+                    console.warn('Failed to clear legacy db.servants', e);
+                }
+
+                if (typeof window !== 'undefined' && window.dispatchEvent) {
+                    window.dispatchEvent(new Event('servant-profile-updated'));
+                }
+            }
+        }
+
+        return { success: true, settings: mergedSettings, updated: settingsUpdated };
+    } catch (err) {
+        console.warn('[Sync] pullStructureFromCloud warning (using local cached structure):', err?.message || err);
+        const cached = JSON.parse(localStorage.getItem('appSettings') || '{}');
+        return { success: false, settings: cached, updated: false, warning: err?.message };
+    }
+};
+
+const _syncDataWithCloud = async () => {
+    const db = localDb;
+    const getDocs = (...args) => withTimeout(firestoreGetDocs(...args), SYNC_TIMEOUT_MS, 'جلب البيانات');
+    const setDoc = (...args) => withTimeout(firestoreSetDoc(...args), SYNC_TIMEOUT_MS, 'رفع البيانات');
+    const deleteDoc = (...args) => withTimeout(firestoreDeleteDoc(...args), SYNC_TIMEOUT_MS, 'حذف البيانات');
     try {
         // 🔐 1. هنجيب مفتاح الكلاود 
         const currentSyncKey = localStorage.getItem('currentSyncKey');
@@ -58,79 +142,26 @@ const _syncDataWithCloud = async deadline => {
         let pushedExamIds = new Set();
         let pushedActivitiesIds = new Set();
 
-        let settingsUpdated = false;
-
         const isAdmin = currentSyncKey === 'MASTER_ACCESS' || currentSyncKey === 'ADMIN_MODE';
         const isStageAdmin = currentSyncKey === 'STAGE_ADMIN';
         const currentServantObj = JSON.parse(localStorage.getItem('currentServant') || '{}');
         const allowedClasses = currentServantObj.allowedClasses || [];
 
-        // 🌟 2. سحب إعدادات الكنيسة والخدام (System Settings)
-        const settingsRef = doc(firestore, 'System', 'mainConfig');
-        const settingsSnap = await getDoc(settingsRef);
-        
-        if (settingsSnap.exists()) {
-            const cloudSettings = settingsSnap.data();
-            
-            // 🚨 SESSION VALIDATION: AUTO-LOGOUT DELETED USERS
-            const currentServantStr = localStorage.getItem('currentServant');
-            const currentSyncKey = localStorage.getItem('currentSyncKey');
-            
-            if (currentServantStr && currentSyncKey && currentSyncKey !== 'MASTER_ACCESS' && currentSyncKey !== 'ADMIN_MODE') {
-                const currentServant = JSON.parse(currentServantStr);
-                const role = currentServant.role || '';
-                
-                if (role !== 'Super Admin' && role !== 'أدمن النظام') {
-                    const servantsList = cloudSettings.servants || [];
-                    const isStillExists = servantsList.some(s => {
-                        if (currentServant.id && s.id) return s.id === currentServant.id;
-                        return s.phone === currentServant.phone && s.name === currentServant.name;
-                    });
-                    
-                    if (!isStillExists) {
-                        console.warn("🔴 User deleted from cloud. Forcing auto-logout.");
-                        localStorage.removeItem('currentServant');
-                        localStorage.removeItem('currentSyncKey');
-                        localStorage.removeItem('userPhone');
-                        
-                        await db.children.clear();
-                        await db.attendance.clear();
-                        await db.events.clear();
-                        await db.exams.clear();
-                        await db.grades.clear();
-                        
-                        window.location.href = '#/login';
-                        window.location.reload(); 
-                        return; // Halt sync
-                    }
-                }
-            }
-
-            const localSettingsString = localStorage.getItem('appSettings');
-            
-            if (JSON.stringify(cloudSettings) !== localSettingsString) {
-                const hasPendingSettings = localStorage.getItem('pendingStructureSync') === 'true';
-                if (!hasPendingSettings) {
-                    const localParsed = JSON.parse(localSettingsString || '{}');
-                    const mergedSettings = { ...localParsed, ...cloudSettings };
-                    localStorage.setItem('appSettings', JSON.stringify(mergedSettings));
-                    settingsUpdated = true;
-
-                    // 🚨 Orphan Data Purge: clear deprecated local db.servants 
-                    // so stale local evaluations/data don't leak into UI state
-                    try {
-                        await db.servants.clear();
-                    } catch (e) {
-                        console.warn('Failed to clear legacy db.servants', e);
-                    }
-                }
-            }
-        }
+        // 🌟 2. سحب إعدادات الكنيسة والخدام (System Settings) بشكل مستقل وآمن
+        const structureResult = await pullStructureFromCloud();
+        if (structureResult?.halted) return { success: false, message: 'تم إنهاء الجلسة' };
+        const settingsUpdated = Boolean(structureResult?.updated);
         // -------------------------------------------------------------
 
         const now = new Date().toISOString();
         const lastSyncTime = '1970-01-01T00:00:00.000Z';
-        const scopedResult = await deadline.run(() => syncScopedClassesFromCloud(scopedSyncKeys(), deadline));
+        const scopedResult = await syncScopedClassesFromCloud(scopedSyncKeys());
+        if (scopedResult && scopedResult.success === false && scopedResult.classCount > 0) {
+            return {
+                success: false,
+                message: `تعذر إتمام مزامنة الفصول حالياً (${scopedResult.failures?.[0] || 'تحقق من الاتصال'})`
+            };
+        }
 
         // 🌟 3. السحب أولاً (Pull) من السحابة 🌟
         let cloudEvents = [];
@@ -141,39 +172,38 @@ const _syncDataWithCloud = async deadline => {
             return rawData.payload ? decryptData(rawData.payload) : rawData;
         };
 
-        if (isAdmin) {
+        try {
+            if (isAdmin) {
+                const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
+                cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
+                
+                const activitiesSnapshot = await getDocs(collectionGroup(firestore, 'activities'));
+                cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
+            } else if (isStageAdmin) {
+                if (allowedClasses.length > 0) {
+                    const eventsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'events')).catch(() => ({ docs: [] }))));
+                    const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events')).catch(() => ({ docs: [] }));
+                    cloudEvents = [
+                        ...eventsSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean),
+                        ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
+                    ];
 
-            const eventsSnapshot = await getDocs(collectionGroup(firestore, 'events'));
-            cloudEvents = (eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
-            
-            const activitiesSnapshot = await getDocs(collectionGroup(firestore, 'activities'));
-            cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
-            
-        } else if (isStageAdmin) {
-            if (allowedClasses.length > 0) {
-
-                const eventsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'events'))));
-                const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
+                    const activitiesSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'activities')).catch(() => ({ docs: [] }))));
+                    cloudActivities = activitiesSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
+                }
+            } else {
+                const eventsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'events')).catch(() => ({ docs: [] }));
+                const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events')).catch(() => ({ docs: [] }));
                 cloudEvents = [
-                    ...eventsSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean),
+                    ...(eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean),
                     ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
                 ];
-
-                const activitiesSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'activities'))));
-                cloudActivities = activitiesSnaps.flatMap(snap => (snap?.docs || []).map(processCloudDoc)).filter(Boolean);
+                
+                const activitiesSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'activities')).catch(() => ({ docs: [] }));
+                cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
             }
-        } else {
-
-            const eventsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'events'));
-            const globalEventsSnapshot = await getDocs(collection(firestore, 'Osras', 'global', 'events'));
-            cloudEvents = [
-                ...(eventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean),
-                ...(globalEventsSnapshot?.docs || []).map(processCloudDoc).filter(Boolean)
-            ];
-            
-            const activitiesSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'activities'));
-            cloudActivities = (activitiesSnapshot?.docs || []).map(processCloudDoc).filter(Boolean);
-            
+        } catch (pullSecErr) {
+            console.warn('[Sync] Secondary events/activities pull warning:', pullSecErr?.message || pullSecErr);
         }
 
         // تحويل داتا الكلاود لخرائط (Maps) عشان المقارنة تبقى بسرعة الصاروخ
@@ -386,21 +416,25 @@ const _syncDataWithCloud = async deadline => {
 
         // 📝 6b. سحب الامتحانات (Exams metadata pull)
         let cloudExamsList = [];
-        if (isAdmin) {
-            const examsSnapshot = await getDocs(collectionGroup(firestore, 'exams'));
-            // Filter only exam-level docs (those under Osras/{key}/exams, not grades subcollections)
-            cloudExamsList = (examsSnapshot?.docs || [])
-                .filter(d => d.ref.parent.id === 'exams')
-                .map(d => ({ firebaseId: d.id, ...d.data() }))
-                .filter(Boolean);
-        } else if (isStageAdmin) {
-            if (allowedClasses.length > 0) {
-                const examsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'exams'))));
-                cloudExamsList = examsSnaps.flatMap(snap => (snap?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() }))).filter(Boolean);
+        try {
+            if (isAdmin) {
+                const examsSnapshot = await getDocs(collectionGroup(firestore, 'exams'));
+                // Filter only exam-level docs (those under Osras/{key}/exams, not grades subcollections)
+                cloudExamsList = (examsSnapshot?.docs || [])
+                    .filter(d => d.ref.parent.id === 'exams')
+                    .map(d => ({ firebaseId: d.id, ...d.data() }))
+                    .filter(Boolean);
+            } else if (isStageAdmin) {
+                if (allowedClasses.length > 0) {
+                    const examsSnaps = await Promise.all(allowedClasses.map(key => getDocs(collection(firestore, 'Osras', key, 'exams')).catch(() => ({ docs: [] }))));
+                    cloudExamsList = examsSnaps.flatMap(snap => (snap?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() }))).filter(Boolean);
+                }
+            } else {
+                const examsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'exams')).catch(() => ({ docs: [] }));
+                cloudExamsList = (examsSnapshot?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() })).filter(Boolean);
             }
-        } else {
-            const examsSnapshot = await getDocs(collection(firestore, 'Osras', currentSyncKey, 'exams'));
-            cloudExamsList = (examsSnapshot?.docs || []).map(d => ({ firebaseId: d.id, ...d.data() })).filter(Boolean);
+        } catch (examsPullErr) {
+            console.warn('[Sync] Secondary exams pull warning:', examsPullErr?.message || examsPullErr);
         }
 
         const localExamsMap = new Map(localExams.map(e => [e.firebaseId, e]));
@@ -567,15 +601,15 @@ const _syncDataWithCloud = async deadline => {
 let activeSync = null;
 export const syncDataWithCloud = () => {
     if (activeSync) return activeSync;
-    if (!navigator.onLine) return Promise.resolve({ success: false, message: 'لا يوجد اتصال بالإنترنت' });
-    const deadline = createSyncDeadline('المزامنة الشاملة');
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return Promise.resolve({ success: false, message: 'لا يوجد اتصال بالإنترنت' });
+    }
     const finishStatus = beginSyncStatus();
     let outcome = 'error';
-    const task = deadline.run(() => _syncDataWithCloud(deadline))
-        .catch(error => ({ success: false, message: error.message }))
+    const task = _syncDataWithCloud()
+        .catch(error => ({ success: false, message: error?.message || 'حدث خطأ أثناء المزامنة' }))
         .then(result => { outcome = result?.success ? 'success' : 'error'; return result; })
         .finally(() => {
-            deadline.cancel();
             if (activeSync === task) activeSync = null;
             finishStatus(outcome);
         });

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, Suspense, lazy } from 'react';
 import useNetworkStatus from './hooks/useNetworkStatus';
 import useChildrenRealtimeSync from './hooks/useChildrenRealtimeSync';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
+import { getImpersonatedOsra, exitOsraImpersonation } from './utils/notificationScopeEngine';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
@@ -225,12 +226,29 @@ function ParentProtectedRoute({ children }) {
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
 
   // 🌐 Global network listener — auto-syncs when coming back online
   useNetworkStatus();
 
   // ⚡ Real-time Firestore listener — propagates child deletions & changes instantly
   useChildrenRealtimeSync();
+
+  const [impersonatedOsra, setImpersonatedOsra] = useState(() => getImpersonatedOsra());
+
+  useEffect(() => {
+    const refreshImpersonation = () => {
+      setImpersonatedOsra(getImpersonatedOsra());
+    };
+    window.addEventListener('syncKey-changed', refreshImpersonation);
+    window.addEventListener('auth-changed', refreshImpersonation);
+    window.addEventListener('storage', refreshImpersonation);
+    return () => {
+      window.removeEventListener('syncKey-changed', refreshImpersonation);
+      window.removeEventListener('auth-changed', refreshImpersonation);
+      window.removeEventListener('storage', refreshImpersonation);
+    };
+  }, []);
 
   // السطر ده بيقرا هل الخادم مسجل دخول ولا لأ
   const isAuthenticated = !!localStorage.getItem('currentSyncKey');
@@ -252,18 +270,13 @@ function App() {
   // إنت قولت إنك مش عايز الفوتر يبان في أي حتة غير في الهوم بس (المسار '/')
   const showFooter = isAuthenticated && location.pathname === '/';
 
-  const isSuperAdminImpersonating = localStorage.getItem('isSuperAdminImpersonating') === 'true';
-  const assignedOsra = localStorage.getItem('assignedOsra') || 'الأسرة المحددة';
+  const isSuperAdminImpersonating = Boolean(impersonatedOsra?.syncKey);
+  const assignedOsra = impersonatedOsra?.name || localStorage.getItem('assignedOsra') || 'الأسرة المحددة';
 
   const handleExitImpersonation = () => {
-    const masterKey = localStorage.getItem('masterSyncKey');
-    if (masterKey) {
-        localStorage.setItem('currentSyncKey', masterKey);
-        localStorage.removeItem('isSuperAdminImpersonating');
-        localStorage.removeItem('masterSyncKey');
-        localStorage.removeItem('assignedOsra');
-        window.location.href = '/';
-    }
+    exitOsraImpersonation();
+    setImpersonatedOsra(null);
+    navigate('/');
   };
 
   return (
