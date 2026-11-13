@@ -106,7 +106,8 @@ export default function Home() {
     const {
         activeChildren: children,
         classCounts,
-        weeklyAttendance
+        weeklyAttendance,
+        isLoadingInitialData
     } = useChurchDataEngine(isImpersonating ? [activeSyncKey] : null);
 
     // 🌟 Real-time weekly class activity badges (Requirement #2)
@@ -674,6 +675,7 @@ export default function Home() {
                             classes={masterOsras} 
                             activityByClass={activityByClass}
                             classCounts={classCounts}
+                            isLoadingInitialData={isLoadingInitialData}
                             onClassClick={(osra) => handleEnterOsra(osra)} 
                         />
 
@@ -686,6 +688,7 @@ export default function Home() {
                                 const totalKids = act.totalActiveChildren ?? classCounts[osra.syncKey] ?? 0;
                                 const presentCount = Math.min(act.presentCount || 0, totalKids);
                                 const isThu = isThursdayServiceClass(osra.syncKey, osra.name);
+                                const showLoadingKids = totalKids === 0 && isLoadingInitialData;
                                 return (
                                     <div key={i} className="bg-gradient-to-br from-indigo-900 to-indigo-950 p-4 sm:p-5 rounded-3xl shadow-xl shadow-indigo-900/20 border border-amber-500/20 flex flex-col justify-between hover:scale-[1.01] transition-transform">
                                         <div className="flex items-center justify-between gap-3 mb-3">
@@ -705,7 +708,7 @@ export default function Home() {
                                                 <div className="min-w-0">
                                                     <h3 className="text-white font-black text-lg truncate">{osra.name}</h3>
                                                     <span className="text-[11px] font-bold text-indigo-200 block mt-0.5">
-                                                        👦👧 {totalKids} مخدوم • {isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}
+                                                        {showLoadingKids ? '⏳ جاري التحميل...' : `👦👧 ${totalKids} مخدوم`} • {isThu ? 'خدمة الخميس' : 'خدمة الجمعة'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -722,6 +725,10 @@ export default function Home() {
                                                 >
                                                     ✅ سجل الحضور ({presentCount} / {totalKids})
                                                 </button>
+                                            ) : showLoadingKids ? (
+                                                <span className="bg-slate-800/80 text-slate-300 border border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1 animate-pulse">
+                                                    ⏳ جاري تحميل بيانات الفصل...
+                                                </span>
                                             ) : (
                                                 <span className="bg-slate-800/80 text-slate-400 border border-slate-700/80 px-2.5 py-1 rounded-xl text-xs font-bold flex items-center gap-1">
                                                     ⏳ لم يسجل الحضور بعد (0 / {totalKids})

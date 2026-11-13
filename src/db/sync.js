@@ -604,6 +604,10 @@ export const syncDataWithCloud = () => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         return Promise.resolve({ success: false, message: 'لا يوجد اتصال بالإنترنت' });
     }
+    const currentSyncKey = typeof localStorage !== 'undefined' ? localStorage.getItem('currentSyncKey') : null;
+    if (!currentSyncKey) {
+        return Promise.resolve({ success: false, skipped: true, message: 'غير مسجل الدخول' });
+    }
     const finishStatus = beginSyncStatus();
     let outcome = 'error';
     const task = _syncDataWithCloud()

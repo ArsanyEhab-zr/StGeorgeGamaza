@@ -18,13 +18,20 @@ export default function GlobalSyncBadge() {
             const detail = e.detail || {};
             setVisible(true);
             clearTimeout(safetyTimer);
-            if (detail.status === 'syncing') safetyTimer = setTimeout(() => {
-                setSyncState(prev => ({ ...prev, status: 'error' }));
-                hideTimer = setTimeout(() => setVisible(false), 2000);
-            }, 8000);
+            // If a sync operation takes longer than 10s without emitting a new batch event,
+            // transition cleanly to 'idle' (hidden) — NEVER show a false 'error' badge!
+            if (detail.status === 'syncing') {
+                safetyTimer = setTimeout(() => {
+                    setSyncState(prev => ({ ...prev, status: 'idle' }));
+                    setVisible(false);
+                }, 10000);
+            }
+            const nextStatus = detail.status === 'idle' && detail.outcome === 'error'
+                ? 'error'
+                : (detail.status || 'idle');
             setSyncState(prev => ({
                 ...prev,
-                status: detail.status === 'idle' && detail.outcome === 'error' ? 'error' : (detail.status || 'idle'),
+                status: nextStatus,
                 lastSyncedAt: detail.time || prev.lastSyncedAt,
             }));
 

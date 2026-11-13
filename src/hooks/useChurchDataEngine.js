@@ -10,6 +10,82 @@ import {
 import { getServiceWeekRange, getDefaultServiceDateForClass } from '../utils/serviceWeek';
 
 let hasRunAutoCleanupInSession = false;
+const COUNTS_SNAPSHOT_KEY = 'church_counts_snapshot_v1';
+let memoryCountsSnapshot = null;
+
+function readCachedCountsSnapshot(currentWeekStartDate) {
+    try {
+        const raw = memoryCountsSnapshot || (
+            typeof window !== 'undefined' && window.localStorage
+                ? JSON.parse(localStorage.getItem(COUNTS_SNAPSHOT_KEY) || 'null')
+                : null
+        );
+        if (!raw || typeof raw !== 'object') {
+            return { classCounts: {}, byClass: {}, hasSnapshot: false };
+        }
+        memoryCountsSnapshot = raw;
+        const classCounts = raw.classCounts && typeof raw.classCounts === 'object' ? { ...raw.classCounts } : {};
+        const isSameWeek = raw.weekStartDate === currentWeekStartDate;
+        const byClass = {};
+
+        for (const [key, count] of Object.entries(classCounts)) {
+            const savedAct = isSameWeek && raw.byClass?.[key] ? raw.byClass[key] : null;
+            byClass[key] = {
+                syncKey: key,
+                totalActiveChildren: Number(count) || 0,
+                presentCount: savedAct ? (Number(savedAct.presentCount) || 0) : 0,
+                absentCount: savedAct ? (Number(savedAct.absentCount) || 0) : 0,
+                liturgyCount: savedAct ? (Number(savedAct.liturgyCount) || 0) : 0,
+                visitationCount: savedAct ? (Number(savedAct.visitationCount) || 0) : 0,
+                hasRecordedAttendance: Boolean(savedAct?.hasRecordedAttendance),
+                hasRecordedVisitation: Boolean(savedAct?.hasRecordedVisitation),
+                whoAttendedServiceList: [],
+                whoAbsentServiceList: [],
+                whoAttendedLiturgyList: [],
+                whoVisitedList: []
+            };
+        }
+
+        const hasSnapshot = Object.values(classCounts).some(c => Number(c) > 0);
+        return { classCounts, byClass, hasSnapshot };
+    } catch (_e) {
+        return { classCounts: {}, byClass: {}, hasSnapshot: false };
+    }
+}
+
+function writeCachedCountsSnapshot(weekStartDate, classCounts, byClassMap) {
+    try {
+        if (!classCounts || !Object.values(classCounts).some(c => Number(c) > 0)) return;
+        const prev = readCachedCountsSnapshot(weekStartDate);
+        const mergedCounts = { ...prev.classCounts, ...classCounts };
+        const mergedByClass = { ...prev.byClass };
+
+        for (const [key, act] of Object.entries(byClassMap || {})) {
+            if (!act) continue;
+            mergedByClass[key] = {
+                syncKey: key,
+                totalActiveChildren: Number(act.totalActiveChildren ?? mergedCounts[key] ?? 0),
+                presentCount: Number(act.presentCount || 0),
+                absentCount: Number(act.absentCount || 0),
+                liturgyCount: Number(act.liturgyCount || 0),
+                visitationCount: Number(act.visitationCount || 0),
+                hasRecordedAttendance: Boolean(act.hasRecordedAttendance),
+                hasRecordedVisitation: Boolean(act.hasRecordedVisitation)
+            };
+        }
+
+        const payload = {
+            weekStartDate,
+            updatedAt: Date.now(),
+            classCounts: mergedCounts,
+            byClass: mergedByClass
+        };
+        memoryCountsSnapshot = payload;
+        if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem(COUNTS_SNAPSHOT_KEY, JSON.stringify(payload));
+        }
+    } catch (_e) {}
+}
 
 /**
  * Resolves the effective allowed syncKeys for the current user or explicit scope argument.
@@ -106,6 +182,22 @@ export function useChurchDataEngine(scopeSyncKeys = null, options = {}) {
                 classCounts[key] = list.length;
             }
 
+            // Persist non-empty snapshot so reloads never flash 0 / 0
+            if (canonicalData.activeChildren.length > 0) {
+                writeCachedCountsSnapshot(weekRange.startDate, classCounts, weeklyValidated.byClass);
+            } else {
+                // If local DB is momentarily empty during initial first-time cloud pull, fall back to cached counts if available
+                const cached = readCachedCountsSnapshot(weekRange.startDate);
+                if (cached.hasSnapshot) {
+                    Object.assign(classCounts, cached.classCounts);
+                    for (const [k, v] of Object.entries(cached.byClass)) {
+                        if (!weeklyValidated.byClass[k]) {
+                            weeklyValidated.byClass[k] = v;
+                        }
+                    }
+                }
+            }
+
             const scopedChildren = (
                 targetSyncKey &&
                 targetSyncKey !== 'all' &&
@@ -119,6 +211,7 @@ export function useChurchDataEngine(scopeSyncKeys = null, options = {}) {
 
             return {
                 isLoading: false,
+                isLoadingInitialData: false,
                 canonicalData,
                 activeChildren: scopedChildren,
                 allScopedChildren: canonicalData.activeChildren,
@@ -133,20 +226,22 @@ export function useChurchDataEngine(scopeSyncKeys = null, options = {}) {
             };
         } catch (err) {
             console.error('Error in useChurchDataEngine:', err);
+            const cached = readCachedCountsSnapshot(weekRange.startDate);
             const emptyCanonical = getCanonicalActiveChildren([]);
             const emptyValidated = getValidatedClassAttendance([], emptyCanonical);
             return {
                 isLoading: false,
+                isLoadingInitialData: false,
                 canonicalData: emptyCanonical,
                 activeChildren: [],
                 allScopedChildren: [],
                 childrenByClassMap: emptyCanonical.childrenByClassMap,
                 activeChildIdSetByClass: emptyCanonical.activeChildIdSetByClass,
                 childMapById: emptyCanonical.childMapById,
-                classCounts: {},
-                weeklyAttendance: emptyValidated,
-                activityByClass: {},
-                validatedAttendance: emptyValidated,
+                classCounts: cached.classCounts,
+                weeklyAttendance: { ...emptyValidated, byClass: cached.byClass },
+                activityByClass: cached.byClass,
+                validatedAttendance: { ...emptyValidated, byClass: cached.byClass },
                 weekRange
             };
         }
@@ -161,20 +256,30 @@ export function useChurchDataEngine(scopeSyncKeys = null, options = {}) {
     ]);
 
     if (!engineData) {
+        const cached = readCachedCountsSnapshot(weekRange.startDate);
         const emptyCanonical = getCanonicalActiveChildren([]);
         const emptyValidated = getValidatedClassAttendance([], emptyCanonical);
+        const targetClassCached = targetSyncKey ? cached.byClass[String(targetSyncKey).trim()] : null;
+        const cachedWeekly = {
+            ...emptyValidated,
+            presentCount: targetClassCached ? targetClassCached.presentCount : Object.values(cached.byClass).reduce((s, c) => s + (c.presentCount || 0), 0),
+            liturgyCount: targetClassCached ? targetClassCached.liturgyCount : Object.values(cached.byClass).reduce((s, c) => s + (c.liturgyCount || 0), 0),
+            visitationCount: targetClassCached ? targetClassCached.visitationCount : Object.values(cached.byClass).reduce((s, c) => s + (c.visitationCount || 0), 0),
+            byClass: cached.byClass
+        };
         return {
             isLoading: true,
+            isLoadingInitialData: !cached.hasSnapshot,
             canonicalData: emptyCanonical,
             activeChildren: [],
             allScopedChildren: [],
             childrenByClassMap: emptyCanonical.childrenByClassMap,
             activeChildIdSetByClass: emptyCanonical.activeChildIdSetByClass,
             childMapById: emptyCanonical.childMapById,
-            classCounts: {},
-            weeklyAttendance: emptyValidated,
-            activityByClass: {},
-            validatedAttendance: emptyValidated,
+            classCounts: cached.classCounts,
+            weeklyAttendance: cachedWeekly,
+            activityByClass: cached.byClass,
+            validatedAttendance: cachedWeekly,
             weekRange,
             getDefaultServiceDateForClass
         };

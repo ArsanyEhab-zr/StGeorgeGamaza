@@ -66,7 +66,8 @@ export function beginSyncStatus() {
     if (operations.size === 1) { hadFailure = false; notifySyncStatus('syncing'); }
     return (outcome = 'success') => {
         if (!operations.delete(token)) return;
-        hadFailure ||= outcome !== 'success';
+        if (outcome === 'success') hadFailure = false;
+        else hadFailure = true;
         if (!operations.size) notifySyncStatus('idle', { time: Date.now(), outcome: hadFailure ? 'error' : 'success' });
     };
 }

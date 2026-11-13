@@ -94,6 +94,7 @@ export default function MasterDashboard() {
         allScopedChildren: children,
         classCounts,
         validatedAttendance: selectedClassAttendance,
+        isLoadingInitialData,
         weekRange
     } = useChurchDataEngine(allowedSyncKeyList, {
         targetSyncKey: selectedOsraKey && selectedOsraKey !== 'ALL_CHURCH' ? selectedOsraKey : null
@@ -744,7 +745,7 @@ export default function MasterDashboard() {
                                 </div>
                                 <div className="flex flex-col items-center justify-center bg-white/20 w-14 h-14 sm:w-16 sm:h-16 rounded-2xl shrink-0 backdrop-blur-sm">
                                     <span className="font-black text-lg sm:text-xl text-white">
-                                        {children?.filter(c => allowedOsras.some(o => o.syncKey === c.syncKey)).length || 0}
+                                        {allowedOsras.reduce((sum, o) => sum + (classCounts[o.syncKey] ?? 0), 0) || children?.filter(c => allowedOsras.some(o => o.syncKey === c.syncKey)).length || (isLoadingInitialData ? '...' : 0)}
                                     </span>
                                     <span className="text-[10px] font-bold text-indigo-100">مخدوم</span>
                                 </div>
@@ -762,6 +763,7 @@ export default function MasterDashboard() {
                                     classes={allowedOsras}
                                     activityByClass={activityByClass}
                                     classCounts={classCounts}
+                                    isLoadingInitialData={isLoadingInitialData}
                                     onClassClick={(osra) => setSelectedOsraKey(osra.syncKey)}
                                 />
                             </div>
@@ -773,6 +775,7 @@ export default function MasterDashboard() {
                                 const act = activityByClass[osra.syncKey] || {};
                                 const presentCount = Math.min(act.presentCount || 0, countKids);
                                 const isThu = isThursdayServiceClass(osra.syncKey, osra.name);
+                                const showLoadingKids = countKids === 0 && isLoadingInitialData;
                                 return (
                                     <div
                                         key={osra.syncKey}
@@ -800,6 +803,10 @@ export default function MasterDashboard() {
                                                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-2xs">
                                                         ✅ سجل الحضور ({presentCount} / {countKids})
                                                     </span>
+                                                ) : showLoadingKids ? (
+                                                    <span className="bg-slate-50 text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1 animate-pulse">
+                                                        ⏳ جاري التحميل...
+                                                    </span>
                                                 ) : (
                                                     <span className="bg-slate-50 text-slate-400 border border-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1">
                                                         ⏳ لم يسجل بعد (0 / {countKids})
@@ -815,7 +822,7 @@ export default function MasterDashboard() {
                                             </div>
                                         </div>
                                         <div className="flex flex-col items-center justify-center bg-indigo-50 w-12 h-12 rounded-2xl shrink-0 group-hover:bg-amber-50 transition-colors">
-                                            <span className="font-black text-indigo-700 group-hover:text-amber-700">{countKids}</span>
+                                            <span className="font-black text-indigo-700 group-hover:text-amber-700">{showLoadingKids ? '...' : countKids}</span>
                                             <span className="text-[9px] font-bold text-indigo-400 group-hover:text-amber-500">مخدوم</span>
                                         </div>
                                     </div>

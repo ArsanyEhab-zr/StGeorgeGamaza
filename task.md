@@ -26,6 +26,8 @@
 - [x] تحسين ترويسة وشارات `WeeklyClassActivitySummary.jsx` على شاشات الموبايل لمنع انضغاط النص عمودياً
 
 ## المرحلة 6: التحقق الشامل والاختبارات والبناء النهائي (`tests/*` و `npm run build`)
+- [x] القضاء على وميض `0 / 0` و `0 مخدوم` عند فتح الصفحات عبر حفظ واسترجاع لقطة الأعداد الفورية (`church_counts_snapshot_v1`) في `useChurchDataEngine.js`
+- [x] إزالة شارة `خطأ مزامنة (إعادة)` الكاذبة في `GlobalSyncBadge.jsx` و `syncDeadline.js` و `childSync.js` و `sync.js`
 - [x] تحديث وتشغيل اختبارات الوحدة والتكامل (`npm run test:data-integrity`, `npm run test:sync-freeze`, `npm run test:sync-ui`)
 - [x] تشغيل `npm run build` والتأكد من نجاح البناء بدون أي أخطاء (`0 errors`)
 - [x] تحديث `task.md` وتقديم التقرير النهائي باللغة العربية

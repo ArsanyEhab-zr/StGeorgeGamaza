@@ -1,4 +1,4 @@
-import { createSyncDeadline, beginSyncStatus, SYNC_TIMEOUT_MS } from '../utils/syncDeadline';
+import { createSyncDeadline, beginSyncStatus, notifySyncStatus, SYNC_TIMEOUT_MS } from '../utils/syncDeadline';
 import { logActivity } from '../utils/activityLogger';
 import { db } from './database';
 import { firestore } from './firebase';
@@ -250,6 +250,7 @@ export const syncScopedClassesFromCloud = (keys = scopedSyncKeys(), parentDeadli
         // Prioritize classes with oldest sync checkpoint so progressive batches update stale classes first
         const queue = [...scope].sort((a, b) => timestamp(localStorage.getItem(`lastSyncTime_${a}`)) - timestamp(localStorage.getItem(`lastSyncTime_${b}`)));
         for (let i = 0; i < queue.length; i += BATCH_SIZE) {
+            if (i > 0) notifySyncStatus('syncing');
             const batch = queue.slice(i, i + BATCH_SIZE);
             const results = await Promise.allSettled(batch.map(key => syncClass(key, parentDeadline)));
             results.forEach((r, j) => {

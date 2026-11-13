@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Calendar, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 
-export default function WeeklyClassActivitySummary({ classes = [], activityByClass = {}, classCounts = {}, onClassClick }) {
+export default function WeeklyClassActivitySummary({ classes = [], activityByClass = {}, classCounts = {}, isLoadingInitialData = false, onClassClick }) {
     const [isCollapsed, setIsCollapsed] = useState(false);
 
     if (!classes || classes.length === 0) return null;
@@ -105,6 +105,10 @@ export default function WeeklyClassActivitySummary({ classes = [], activityByCla
                                     {hasAtt ? (
                                         <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.2 rounded-md font-bold">
                                             ✓ {pCount} / {totalKids}
+                                        </span>
+                                    ) : totalKids === 0 && isLoadingInitialData ? (
+                                        <span className="text-slate-400 text-[10px] animate-pulse">
+                                            ⏳ ...
                                         </span>
                                     ) : (
                                         <span className="text-slate-400 text-[10px]">
